@@ -7,6 +7,8 @@ import com.read.app.data.local.TagEntity
 import com.read.app.domain.model.Book
 import com.read.app.domain.model.Tag
 import com.read.app.domain.repository.BookRepository
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -20,17 +22,22 @@ class BookRepositoryImpl @Inject constructor(
 
     override fun getAllBooks(): Flow<List<Book>> =
         bookDao.getAllBooks().map { entities ->
-            entities.map { entity -> entity.toBookWithTags() }
+            entities.toBooksWithTags()
         }
 
     override fun searchBooks(query: String): Flow<List<Book>> =
         bookDao.searchBooks(query).map { entities ->
-            entities.map { entity -> entity.toBookWithTags() }
+            entities.toBooksWithTags()
+        }
+
+    override fun searchBooksByTag(tagName: String): Flow<List<Book>> =
+        bookDao.searchBooksByTag(tagName).map { entities ->
+            entities.toBooksWithTags()
         }
 
     override fun getBooksByFolder(folderId: Long): Flow<List<Book>> =
         bookDao.getBooksByFolder(folderId).map { entities ->
-            entities.map { entity -> entity.toBookWithTags() }
+            entities.toBooksWithTags()
         }
 
     override suspend fun getBookById(id: Long): Book? =
@@ -59,6 +66,12 @@ class BookRepositoryImpl @Inject constructor(
         return toBook().copy(
             tags = tagEntities.map { it.toTag() }
         )
+    }
+
+    private suspend fun List<BookEntity>.toBooksWithTags(): List<Book> = coroutineScope {
+        map { entity ->
+            async { entity.toBookWithTags() }
+        }.map { it.await() }
     }
 
     private fun TagEntity.toTag() = Tag(id = id, name = name, color = color)

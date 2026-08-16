@@ -15,6 +15,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.read.app.ui.components.RatingBar
+import com.read.app.ui.components.TagChip
+import com.read.app.util.FileUtil
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,7 +60,7 @@ fun BookDetailScreen(
                         }
                         Spacer(Modifier.height(8.dp))
                         Text("格式: ${b.format.uppercase()}", style = MaterialTheme.typography.bodySmall)
-                        Text("大小: ${formatFileSize(b.fileSize)}", style = MaterialTheme.typography.bodySmall)
+                        Text("大小: ${FileUtil.formatFileSize(b.fileSize)}", style = MaterialTheme.typography.bodySmall)
                         Text("路径: ${b.filePath}", style = MaterialTheme.typography.bodySmall, maxLines = 2)
                     }
                 }
@@ -67,20 +70,11 @@ fun BookDetailScreen(
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("评分", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            (1..5).forEach { star ->
-                                IconButton(
-                                    onClick = { viewModel.updateRating(b.id, if (b.rating == star) 0 else star) }
-                                ) {
-                                    Icon(
-                                        if (star <= (b.rating ?: 0)) Icons.Filled.Star else Icons.Outlined.Star,
-                                        contentDescription = "$star星",
-                                        tint = MaterialTheme.colorScheme.tertiary,
-                                        modifier = Modifier.size(32.dp)
-                                    )
-                                }
-                            }
-                        }
+                        RatingBar(
+                            rating = b.rating ?: 0,
+                            starSize = 32.dp,
+                            onRatingChange = { viewModel.updateRating(b.id, it) }
+                        )
                     }
                 }
 
@@ -119,17 +113,10 @@ fun BookDetailScreen(
                                         title = { Text("移除标签") },
                                         text = { Text("确定要移除标签 \"${tag.name}\" 吗？") }
                                     )
-                                    SuggestionChip(
-                                        onClick = { showRemove = true },
-                                        label = { Text(tag.name) },
-                                        leadingIcon = {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(8.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Color(tag.color))
-                                            )
-                                        }
+                                    TagChip(
+                                        name = tag.name,
+                                        color = tag.color,
+                                        onClick = { showRemove = true }
                                     )
                                 }
                             }
@@ -209,12 +196,4 @@ private fun AddTagDialog(
             TextButton(onClick = onDismiss) { Text("取消") }
         }
     )
-}
-
-private fun formatFileSize(bytes: Long): String {
-    return when {
-        bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-        else -> "${bytes / (1024 * 1024)} MB"
-    }
 }

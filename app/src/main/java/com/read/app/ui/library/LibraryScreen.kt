@@ -1,9 +1,5 @@
 package com.read.app.ui.library
 
-import android.content.Intent
-import android.os.Build
-import android.os.Environment
-import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -25,7 +21,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.read.app.domain.model.Book
-import java.io.File
+import com.read.app.ui.components.TagChip
+import com.read.app.ui.components.RatingBar
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -39,6 +36,9 @@ fun LibraryScreen(
     val books by viewModel.books.collectAsState()
     val isGridView by viewModel.isGridView.collectAsState()
     val scanMessage by viewModel.scanMessage.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val sortOrder by viewModel.sortOrder.collectAsState()
+    var showSortMenu by remember { mutableStateOf(false) }
 
     val folderPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -46,7 +46,7 @@ fun LibraryScreen(
         uri?.let {
             val path = it.path ?: return@let
             val name = it.lastPathSegment ?: "Unknown"
-            viewModel.scanFolder(it, path, name) { null }
+            viewModel.scanFolder(it, path, name)
         }
     }
 
@@ -57,6 +57,25 @@ fun LibraryScreen(
                 actions = {
                     IconButton(onClick = onSearchClick) {
                         Icon(Icons.Default.Search, contentDescription = "搜索")
+                    }
+                    IconButton(onClick = { showSortMenu = true }) {
+                        Icon(Icons.Default.Sort, contentDescription = "排序")
+                    }
+                    DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
+                        SortOrder.entries.forEach { order ->
+                            DropdownMenuItem(
+                                text = { Text(order.label) },
+                                onClick = {
+                                    viewModel.setSortOrder(order)
+                                    showSortMenu = false
+                                },
+                                leadingIcon = {
+                                    if (order == sortOrder) {
+                                        Icon(Icons.Default.Check, contentDescription = null)
+                                    }
+                                }
+                            )
+                        }
                     }
                     IconButton(onClick = { viewModel.toggleViewMode() }) {
                         Icon(
@@ -167,25 +186,12 @@ private fun BookGridItem(book: Book, onClick: () -> Unit, onLongClick: () -> Uni
             )
             if (book.rating != null) {
                 Spacer(Modifier.height(4.dp))
-                Row {
-                    repeat(5) { i ->
-                        Icon(
-                            if (i < (book.rating ?: 0)) Icons.Filled.Star else Icons.Outlined.Star,
-                            contentDescription = null,
-                            modifier = Modifier.size(12.dp),
-                            tint = MaterialTheme.colorScheme.tertiary
-                        )
-                    }
-                }
+                RatingBar(rating = book.rating ?: 0, starSize = 12.dp)
             }
             if (book.tags.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp))
                 book.tags.take(2).forEach { tag ->
-                    SuggestionChip(
-                        onClick = {},
-                        label = { Text(tag.name, style = MaterialTheme.typography.labelSmall) },
-                        modifier = Modifier.height(20.dp)
-                    )
+                    TagChip(name = tag.name, color = tag.color, modifier = Modifier.height(20.dp))
                 }
             }
         }
@@ -222,16 +228,7 @@ private fun BookListItem(book: Book, onClick: () -> Unit, onLongClick: () -> Uni
                 Text(book.format.uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
             }
             if (book.rating != null) {
-                Row {
-                    repeat(5) { i ->
-                        Icon(
-                            if (i < (book.rating ?: 0)) Icons.Filled.Star else Icons.Outlined.Star,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.tertiary
-                        )
-                    }
-                }
+                RatingBar(rating = book.rating ?: 0, starSize = 14.dp)
             }
         }
     }

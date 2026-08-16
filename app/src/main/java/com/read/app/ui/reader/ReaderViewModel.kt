@@ -27,6 +27,9 @@ class ReaderViewModel @Inject constructor(
     private val _fontSize = MutableStateFlow(18f)
     val fontSize: StateFlow<Float> = _fontSize.asStateFlow()
 
+    private val _bgColorIndex = MutableStateFlow(0)
+    val bgColorIndex: StateFlow<Int> = _bgColorIndex.asStateFlow()
+
     fun loadBook(bookId: Long) {
         viewModelScope.launch {
             val book = bookRepository.getBookById(bookId)
@@ -46,6 +49,10 @@ class ReaderViewModel @Inject constructor(
 
     fun setFontSize(size: Float) {
         _fontSize.value = size
+    }
+
+    fun setBgColor(index: Int) {
+        _bgColorIndex.value = index
     }
 
     fun saveProgress(bookId: Long, progress: String) {

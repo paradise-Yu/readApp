@@ -1,6 +1,5 @@
 package com.read.app.ui.reader
 
-import android.view.View
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -45,6 +44,7 @@ fun PdfReaderScreen(
                                 .enableSwipe(true)
                                 .swipeHorizontal(false)
                                 .enableDoubletap(true)
+                                .enableZoom(true)
                                 .load()
                         }
                     },

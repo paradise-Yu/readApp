@@ -20,6 +20,9 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE filePath = :filePath")
     suspend fun getBookByPath(filePath: String): BookEntity?
 
+    @Query("SELECT DISTINCT b.* FROM books b INNER JOIN book_tags bt ON b.id = bt.bookId INNER JOIN tags t ON bt.tagId = t.id WHERE t.name = :tagName")
+    fun searchBooksByTag(tagName: String): Flow<List<BookEntity>>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertBook(book: BookEntity): Long
 

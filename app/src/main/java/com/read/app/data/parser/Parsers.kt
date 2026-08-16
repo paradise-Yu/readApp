@@ -1,8 +1,6 @@
 package com.read.app.data.parser
 
-import android.content.Context
 import java.io.File
-import java.io.InputStream
 
 data class BookMetadata(
     val title: String,

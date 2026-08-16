@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.Flow
 interface BookRepository {
     fun getAllBooks(): Flow<List<Book>>
     fun searchBooks(query: String): Flow<List<Book>>
+    fun searchBooksByTag(tagName: String): Flow<List<Book>>
     fun getBooksByFolder(folderId: Long): Flow<List<Book>>
     suspend fun getBookById(id: Long): Book?
     suspend fun getBookByPath(filePath: String): Book?

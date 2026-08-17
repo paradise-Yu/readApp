@@ -49,14 +49,23 @@ fun EpubReaderScreen(
                         <head>
                         <meta name="viewport" content="width=device-width, initial-scale=1.0">
                         <style>
+                            /* 护眼羊皮纸配色：避免纯白底的眩光 */
+                            html { background: #F5EFDF; }
                             body { 
                                 font-family: serif; 
                                 font-size: 18px; 
-                                line-height: 1.8; 
-                                padding: 16px; 
-                                color: #333;
+                                line-height: 1.9; 
+                                padding: 16px 20px; 
+                                color: #3B3226;
+                                background: #F5EFDF;
                             }
+                            p { margin: 0 0 0.8em 0; text-align: justify; }
                             img { max-width: 100%; height: auto; }
+                            a { color: #6F4E37; }
+                            @media (prefers-color-scheme: dark) {
+                                html, body { background: #232120; color: #D6CDC0; }
+                                a { color: #D7B49A; }
+                            }
                         </style>
                         </head>
                         <body>$content</body>

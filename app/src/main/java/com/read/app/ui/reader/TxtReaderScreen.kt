@@ -15,24 +15,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 
-private val bgColors = listOf(
-    Color(0xFFFFFFFF), // 白色
-    Color(0xFFF5F5DC), // 米色
-    Color(0xFFC7EDCC), // 绿色护眼
-    Color(0xFF2B2B2B), // 深色
-    Color(0xFF000000)  // 纯黑
-)
+// 护眼阅读配色 —— 依据色彩科学调校：
+// - 避免纯白底+纯黑字的极端对比（眩光）
+// - 深色模式用暖深灰而非纯黑（避免光晕效应）
+// - 护眼绿降低饱和度
+data class ReaderTheme(val name: String, val bg: Color, val text: Color)
 
-private val textColors = listOf(
-    Color(0xFF000000), // 白色背景 -> 黑字
-    Color(0xFF000000), // 米色背景 -> 黑字
-    Color(0xFF000000), // 绿色背景 -> 黑字
-    Color(0xFFCCCCCC), // 深色背景 -> 浅字
-    Color(0xFFAAAAAA)  // 纯黑背景 -> 浅字
+private val readerThemes = listOf(
+    ReaderTheme("纸白", Color(0xFFFAF6EF), Color(0xFF3B3226)),  // 暖纸白 + 柔墨黑
+    ReaderTheme("羊皮", Color(0xFFF1E3C8), Color(0xFF4A3B2A)),  // 羊皮纸黄
+    ReaderTheme("护眼", Color(0xFFD8E6CE), Color(0xFF2F3B28)),  // 低饱和护眼绿
+    ReaderTheme("暮色", Color(0xFF232120), Color(0xFFD6CDC0)),  // 暖深灰
+    ReaderTheme("夜读", Color(0xFF121212), Color(0xFFBFBAB2))   // 近黑（非纯黑）
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -50,11 +49,17 @@ fun TxtReaderScreen(
 
     LaunchedEffect(bookId) { viewModel.loadBook(bookId) }
 
-    val bgColor = bgColors[bgColorIndex]
-    val textColor = textColors[bgColorIndex]
+    val theme = readerThemes[bgColorIndex.coerceIn(0, readerThemes.lastIndex)]
+
+    // 按空行分段，段间留白，缓解连续阅读疲劳
+    val paragraphs = remember(content) {
+        content.split(Regex("\\n\\s*\\n")).filter { it.isNotBlank() }
+    }
 
     Scaffold(
+        containerColor = theme.bg,
         topBar = {
+            // 顶栏与阅读背景同色，保证沉浸感
             TopAppBar(
                 title = { Text(book?.title ?: "阅读") },
                 navigationIcon = {
@@ -66,7 +71,13 @@ fun TxtReaderScreen(
                     IconButton(onClick = { showSettings = !showSettings }) {
                         Icon(Icons.Default.Settings, contentDescription = "设置")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = theme.bg,
+                    titleContentColor = theme.text,
+                    navigationIconContentColor = theme.text,
+                    actionIconContentColor = theme.text
+                )
             )
         }
     ) { padding ->
@@ -74,49 +85,61 @@ fun TxtReaderScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(bgColor)
+                .background(theme.bg)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp)
+                .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             if (showSettings) {
-                Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = theme.text.copy(alpha = 0.06f))
+                ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("字体大小: ${fontSize.toInt()}sp")
+                        Text("字体大小: ${fontSize.toInt()}sp", color = theme.text)
                         Slider(
                             value = fontSize,
                             onValueChange = { viewModel.setFontSize(it) },
-                            valueRange = 12f..36f,
-                            steps = 12
+                            valueRange = 14f..32f,
+                            steps = 8
                         )
-                        Spacer(Modifier.height(8.dp))
-                        Text("背景颜色")
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            bgColors.forEachIndexed { index, color ->
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(color)
-                                        .clickable { viewModel.setBgColor(index) }
-                                        .then(
-                                            if (index == bgColorIndex) Modifier.background(
-                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                                                CircleShape
-                                            ) else Modifier
-                                        )
-                                )
+                        Spacer(Modifier.height(12.dp))
+                        Text("阅读背景", color = theme.text)
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            readerThemes.forEachIndexed { index, t ->
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(t.bg)
+                                            .clickable { viewModel.setBgColor(index) }
+                                            .then(
+                                                if (index == bgColorIndex) Modifier.background(
+                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                                                    CircleShape
+                                                ) else Modifier
+                                            )
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(t.name, fontSize = 10.sp, color = theme.text)
+                                }
                             }
                         }
                     }
                 }
             }
-            Text(
-                text = content,
-                fontSize = fontSize.sp,
-                lineHeight = (fontSize * 1.8).sp,
-                color = textColor
-            )
+            // 分段渲染：衬线字体 + 宽松行距 + 段间距
+            paragraphs.forEach { para ->
+                Text(
+                    text = para,
+                    fontSize = fontSize.sp,
+                    lineHeight = (fontSize * 1.9).sp,
+                    color = theme.text,
+                    fontFamily = FontFamily.Serif,
+                    modifier = Modifier.padding(bottom = (fontSize * 0.8).dp)
+                )
+            }
         }
     }
 }

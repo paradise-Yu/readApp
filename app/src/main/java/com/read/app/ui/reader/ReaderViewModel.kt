@@ -24,7 +24,7 @@ class ReaderViewModel @Inject constructor(
     private val _content = MutableStateFlow("")
     val content: StateFlow<String> = _content.asStateFlow()
 
-    private val _fontSize = MutableStateFlow(18f)
+    private val _fontSize = MutableStateFlow(19f)
     val fontSize: StateFlow<Float> = _fontSize.asStateFlow()
 
     private val _bgColorIndex = MutableStateFlow(0)

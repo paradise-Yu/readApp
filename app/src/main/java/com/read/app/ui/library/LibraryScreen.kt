@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.read.app.domain.model.Book
+import com.read.app.ui.components.BookCover
 import com.read.app.ui.components.TagChip
 import com.read.app.ui.components.RatingBar
 
@@ -163,42 +164,45 @@ fun LibraryScreen(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BookGridItem(book: Book, onClick: () -> Unit, onLongClick: () -> Unit) {
-    Card(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(0.65f)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                when (book.format.lowercase()) {
-                    "pdf" -> Icons.Default.PictureAsPdf
-                    "epub" -> Icons.Default.Book
-                    else -> Icons.Default.Description
-                },
-                contentDescription = null,
-                modifier = Modifier.size(48.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Spacer(Modifier.height(8.dp))
+        BookCover(
+            title = book.title,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.7f)
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = book.title,
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (book.author != null) {
             Text(
-                text = book.title,
+                text = book.author,
                 style = MaterialTheme.typography.bodySmall,
-                maxLines = 2,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            if (book.rating != null) {
-                Spacer(Modifier.height(4.dp))
-                RatingBar(rating = book.rating ?: 0, starSize = 12.dp)
-            }
-            if (book.tags.isNotEmpty()) {
-                Spacer(Modifier.height(4.dp))
+        }
+        if ((book.rating ?: 0) > 0) {
+            Spacer(Modifier.height(2.dp))
+            RatingBar(rating = book.rating ?: 0, starSize = 12.dp)
+        }
+        if (book.tags.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
                 book.tags.take(2).forEach { tag ->
-                    TagChip(name = tag.name, color = tag.color, modifier = Modifier.height(20.dp))
+                    TagChip(name = tag.name, color = tag.color)
                 }
             }
         }

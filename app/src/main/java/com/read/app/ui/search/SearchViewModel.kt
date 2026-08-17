@@ -36,7 +36,7 @@ class SearchViewModel @Inject constructor(
     val results: StateFlow<List<Book>> = _results.asStateFlow()
 
     private val _fullTextResults = MutableStateFlow<Map<Long, List<String>>>(emptyMap())
-    val fullTextResults: StateFlow<Map<Long, List<String>>> = _fullTextRESULTS.asStateFlow()
+    val fullTextResults: StateFlow<Map<Long, List<String>>> = _fullTextResults.asStateFlow()
 
     private var searchJob: Job? = null
 
@@ -59,7 +59,7 @@ class SearchViewModel @Inject constructor(
 
             if (q.isBlank() && tag == null) {
                 _results.value = emptyList()
-                _fullTextRESULTS.value = emptyMap()
+                _fullTextResults.value = emptyMap()
                 return@launch
             }
 
@@ -94,7 +94,7 @@ class SearchViewModel @Inject constructor(
                             } catch (_: Exception) {}
                         }
                     }
-                    _fullTextRESULTS.value = fullTextMatches
+                    _fullTextResults.value = fullTextMatches
                 }
                 return@launch
             }

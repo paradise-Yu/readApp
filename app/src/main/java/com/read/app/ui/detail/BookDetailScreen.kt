@@ -19,7 +19,7 @@ import com.read.app.ui.components.RatingBar
 import com.read.app.ui.components.TagChip
 import com.read.app.util.FileUtil
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun BookDetailScreen(
     bookId: Long,
@@ -98,21 +98,22 @@ fun BookDetailScreen(
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 b.tags.forEach { tag ->
                                     var showRemove by remember { mutableStateOf(false) }
-                                    AlertDialog(
-                                        open = showRemove,
-                                        onDismissRequest = { showRemove = false },
-                                        confirmButton = {
-                                            TextButton(onClick = {
-                                                viewModel.removeTag(b.id, tag.id)
-                                                showRemove = false
-                                            }) { Text("移除") }
-                                        },
-                                        dismissButton = {
-                                            TextButton(onClick = { showRemove = false }) { Text("取消") }
-                                        },
-                                        title = { Text("移除标签") },
-                                        text = { Text("确定要移除标签 \"${tag.name}\" 吗？") }
-                                    )
+                                    if (showRemove) {
+                                        AlertDialog(
+                                            onDismissRequest = { showRemove = false },
+                                            confirmButton = {
+                                                TextButton(onClick = {
+                                                    viewModel.removeTag(b.id, tag.id)
+                                                    showRemove = false
+                                                }) { Text("移除") }
+                                            },
+                                            dismissButton = {
+                                                TextButton(onClick = { showRemove = false }) { Text("取消") }
+                                            },
+                                            title = { Text("移除标签") },
+                                            text = { Text("确定要移除标签 \"${tag.name}\" 吗？") }
+                                        )
+                                    }
                                     TagChip(
                                         name = tag.name,
                                         color = tag.color,

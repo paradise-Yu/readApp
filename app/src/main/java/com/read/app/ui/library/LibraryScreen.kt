@@ -161,7 +161,7 @@ fun LibraryScreen(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun BookGridItem(book: Book, onClick: () -> Unit, onLongClick: () -> Unit) {
     Column(

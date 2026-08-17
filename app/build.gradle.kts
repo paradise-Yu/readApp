@@ -73,8 +73,8 @@ dependencies {
     // Coil (image loading)
     implementation("io.coil-kt:coil-compose:2.7.0")
 
-    // PDF Viewer
-    implementation("com.github.barteksc:AndroidPdfViewer:3.2.0-beta.1")
+    // PDF Viewer（旧 support 依赖由 Jetifier 自动重写为 AndroidX）
+    implementation("com.github.mhiew:AndroidPdfViewer:3.1.0-beta.1")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

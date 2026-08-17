@@ -44,7 +44,6 @@ fun PdfReaderScreen(
                                 .enableSwipe(true)
                                 .swipeHorizontal(false)
                                 .enableDoubletap(true)
-                                .enableZoom(true)
                                 .load()
                         }
                     },

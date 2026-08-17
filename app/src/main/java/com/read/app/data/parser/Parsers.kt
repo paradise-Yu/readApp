@@ -1,6 +1,7 @@
 package com.read.app.data.parser
 
 import java.io.File
+import java.nio.charset.Charset
 
 data class BookMetadata(
     val title: String,
@@ -24,14 +25,14 @@ class TxtParser : BookParser {
         return file.readText(charset = detectCharset(file))
     }
 
-    private fun detectCharset(file: File): String {
+    private fun detectCharset(file: File): Charset {
         val bom = ByteArray(4)
         file.inputStream().use { it.read(bom) }
         return when {
-            bom[0] == 0xEF.toByte() && bom[1] == 0xBB.toByte() && bom[2] == 0xBF.toByte() -> "UTF-8"
-            bom[0] == 0xFE.toByte() && bom[1] == 0xFF.toByte() -> "UTF-16BE"
-            bom[0] == 0xFF.toByte() && bom[1] == 0xFE.toByte() -> "UTF-16LE"
-            else -> "UTF-8"
+            bom[0] == 0xEF.toByte() && bom[1] == 0xBB.toByte() && bom[2] == 0xBF.toByte() -> Charsets.UTF_8
+            bom[0] == 0xFE.toByte() && bom[1] == 0xFF.toByte() -> Charset.forName("UTF-16BE")
+            bom[0] == 0xFF.toByte() && bom[1] == 0xFE.toByte() -> Charsets.UTF_16LE
+            else -> Charsets.UTF_8
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.read.app.ui.reader
 
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -35,21 +36,24 @@ fun PdfReaderScreen(
         }
     ) { padding ->
         book?.let { b ->
-            val file = File(b.filePath)
-            if (file.exists()) {
-                AndroidView(
-                    factory = { context ->
-                        PDFView(context, null).apply {
-                            fromFile(file)
-                                .enableSwipe(true)
-                                .swipeHorizontal(false)
-                                .enableDoubletap(true)
-                                .load()
+            AndroidView(
+                factory = { context ->
+                    PDFView(context, null).apply {
+                        // SAF 文档用 fromUri，本地文件用 fromFile
+                        val configurator = if (b.filePath.startsWith("content://")) {
+                            fromUri(Uri.parse(b.filePath))
+                        } else {
+                            fromFile(File(b.filePath))
                         }
-                    },
-                    modifier = Modifier.fillMaxSize().padding(padding)
-                )
-            }
+                        configurator
+                            .enableSwipe(true)
+                            .swipeHorizontal(false)
+                            .enableDoubletap(true)
+                            .load()
+                    }
+                },
+                modifier = Modifier.fillMaxSize().padding(padding)
+            )
         }
     }
 }

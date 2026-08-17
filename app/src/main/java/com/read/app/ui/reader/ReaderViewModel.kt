@@ -1,21 +1,23 @@
 package com.read.app.ui.reader
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.read.app.data.parser.ParserFactory
 import com.read.app.domain.model.Book
 import com.read.app.domain.repository.BookRepository
+import com.read.app.util.FileUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import javax.inject.Inject
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
-    private val bookRepository: BookRepository
+    private val bookRepository: BookRepository,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _book = MutableStateFlow<Book?>(null)
@@ -36,12 +38,14 @@ class ReaderViewModel @Inject constructor(
             _book.value = book
             book?.let {
                 bookRepository.updateReadProgress(bookId, System.currentTimeMillis(), null)
-                withContext(Dispatchers.IO) {
-                    val file = File(book.filePath)
-                    if (file.exists()) {
-                        val parser = ParserFactory.getParser(book.format)
-                        _content.value = parser.readContent(file)
+                // TXT 才需要读取文本内容；PDF/EPUB 由各自渲染组件直接读文件
+                if (book.format.lowercase() == "txt") {
+                    val text = withContext(Dispatchers.IO) {
+                        try {
+                            FileUtil.readTextAutoCharset(context, book.filePath)
+                        } catch (_: Exception) { "" }
                     }
+                    _content.value = text
                 }
             }
         }

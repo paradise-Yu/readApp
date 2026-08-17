@@ -28,9 +28,9 @@ fun FolderScreen(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         uri?.let {
-            val path = it.path ?: return@let
-            val name = it.lastPathSegment ?: "文件夹"
-            viewModel.addFolder(path, name)
+            // lastPathSegment 形如 "primary:Books"，取冒号后部分作为显示名
+            val name = it.lastPathSegment?.substringAfterLast(':') ?: "文件夹"
+            viewModel.addFolder(it, name)
         }
     }
 

@@ -1,26 +1,28 @@
 package com.read.app.ui.search
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.read.app.data.parser.TxtParser
 import com.read.app.domain.model.Book
 import com.read.app.domain.model.Tag
 import com.read.app.domain.repository.BookRepository
 import com.read.app.domain.repository.TagRepository
+import com.read.app.util.FileUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import javax.inject.Inject
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val bookRepository: BookRepository,
-    private val tagRepository: TagRepository
+    private val tagRepository: TagRepository,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _query = MutableStateFlow("")
@@ -80,16 +82,13 @@ class SearchViewModel @Inject constructor(
                     books.filter { it.format == "txt" }.forEach { book ->
                         withContext(Dispatchers.IO) {
                             try {
-                                val file = File(book.filePath)
-                                if (file.exists()) {
-                                    val content = TxtParser().readContent(file)
-                                    val lines = content.lines()
-                                    val matches = lines.filter { line ->
-                                        line.contains(q, ignoreCase = true)
-                                    }.take(3)
-                                    if (matches.isNotEmpty()) {
-                                        fullTextMatches[book.id] = matches
-                                    }
+                                val content = FileUtil.readTextAutoCharset(context, book.filePath)
+                                val lines = content.lines()
+                                val matches = lines.filter { line ->
+                                    line.contains(q, ignoreCase = true)
+                                }.take(3)
+                                if (matches.isNotEmpty()) {
+                                    fullTextMatches[book.id] = matches
                                 }
                             } catch (_: Exception) {}
                         }

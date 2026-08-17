@@ -46,9 +46,8 @@ fun LibraryScreen(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         uri?.let {
-            val path = it.path ?: return@let
-            val name = it.lastPathSegment ?: "Unknown"
-            viewModel.scanFolder(it, path, name)
+            val name = it.lastPathSegment?.substringAfterLast(':') ?: "Unknown"
+            viewModel.scanFolder(it, it.toString(), name)
         }
     }
 

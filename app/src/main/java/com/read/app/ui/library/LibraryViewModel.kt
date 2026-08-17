@@ -4,17 +4,15 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.read.app.data.parser.ParserFactory
 import com.read.app.domain.model.Book
 import com.read.app.domain.model.Folder
 import com.read.app.domain.repository.BookRepository
 import com.read.app.domain.repository.FolderRepository
+import com.read.app.util.BookImporter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 enum class SortOrder(val label: String) {
@@ -94,32 +92,7 @@ class LibraryViewModel @Inject constructor(
     }
 
     private suspend fun scanFolderInternal(path: String, folderId: Long) {
-        val files = withContext(Dispatchers.IO) {
-            com.read.app.util.FileUtil.scanDirectoryForBooks(path)
-        }
-
-        var addedCount = 0
-        files.forEach { file ->
-            val existing = bookRepository.getBookByPath(file.absolutePath)
-            if (existing == null) {
-                try {
-                    val format = file.extension.lowercase()
-                    val parser = ParserFactory.getParser(format)
-                    val metadata = withContext(Dispatchers.IO) { parser.extractMetadata(file) }
-                    bookRepository.insertBook(
-                        Book(
-                            title = metadata.title,
-                            author = metadata.author,
-                            filePath = file.absolutePath,
-                            format = format,
-                            fileSize = file.length(),
-                            folderId = folderId
-                        )
-                    )
-                    addedCount++
-                } catch (_: Exception) {}
-            }
-        }
+        val addedCount = BookImporter.scanAndImport(context, bookRepository, path, folderId)
         if (addedCount > 0) {
             _scanMessage.value = "添加了 $addedCount 本书"
         }

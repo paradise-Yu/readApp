@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 
 // 护眼阅读配色 —— 依据色彩科学调校：
@@ -57,6 +58,7 @@ fun TxtReaderScreen(
     val bgColorIndex by viewModel.bgColorIndex.collectAsState()
     val readMode by viewModel.readMode.collectAsState()
     val savedIndex by viewModel.savedIndex.collectAsState()
+    val savedOffset by viewModel.savedOffset.collectAsState()
     val chapters by viewModel.chapters.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
     var showSettings by remember { mutableStateOf(false) }
@@ -80,25 +82,35 @@ fun TxtReaderScreen(
         derivedStateOf { listState.firstVisibleItemIndex }
     }
 
-    // 位置记忆：内容加载完成后恢复到上次阅读段落
+    // 位置记忆：内容加载完成后恢复到上次阅读位置（段落索引 + 段内偏移）
     // 注意：必须在内容就绪后才置 restored=true，否则首帧空内容会提前消耗恢复机会
     var restored by remember(bookId) { mutableStateOf(false) }
-    LaunchedEffect(content, savedIndex) {
+    LaunchedEffect(content, savedIndex, savedOffset) {
         if (!restored && content.isNotEmpty()) {
-            if (savedIndex > 0) {
-                listState.scrollToItem(savedIndex.coerceIn(0, paragraphs.lastIndex.coerceAtLeast(0)))
+            if (savedIndex > 0 || savedOffset > 0) {
+                listState.scrollToItem(
+                    savedIndex.coerceIn(0, paragraphs.lastIndex.coerceAtLeast(0)),
+                    savedOffset.coerceAtLeast(0)
+                )
             }
             restored = true
         }
     }
 
-    // 退出时保存当前段落索引
+    // 退出时保存当前段落索引与段内偏移
     DisposableEffect(bookId) {
         onDispose {
             if (paragraphs.isNotEmpty()) {
-                viewModel.saveProgress(bookId, listState.firstVisibleItemIndex)
+                viewModel.saveProgress(bookId, listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
             }
         }
+    }
+
+    // 双保险：阅读中位置停留 2 秒即自动落库，不依赖退出时机（杀进程也不丢进度）
+    LaunchedEffect(bookId) {
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .debounce(2000)
+            .collect { (idx, offset) -> viewModel.saveProgress(bookId, idx, offset) }
     }
 
     val progress = if (paragraphs.size > 1) {

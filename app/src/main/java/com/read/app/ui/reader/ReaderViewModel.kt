@@ -7,12 +7,12 @@ import com.read.app.domain.model.Book
 import com.read.app.domain.model.Bookmark
 import com.read.app.domain.repository.BookRepository
 import com.read.app.domain.repository.BookmarkRepository
+import com.read.app.util.AppScope
 import com.read.app.util.FileUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -63,9 +63,12 @@ class ReaderViewModel @Inject constructor(
     private val _readMode = MutableStateFlow(ReadMode.SCROLL)
     val readMode: StateFlow<ReadMode> = _readMode.asStateFlow()
 
-    // 上次阅读位置（段落索引），用于打开时恢复
+    // 上次阅读位置：段落索引 + 段落内像素偏移（段落可能整章一段，仅存索引会回到段首）
     private val _savedIndex = MutableStateFlow(0)
     val savedIndex: StateFlow<Int> = _savedIndex.asStateFlow()
+
+    private val _savedOffset = MutableStateFlow(0)
+    val savedOffset: StateFlow<Int> = _savedOffset.asStateFlow()
 
     // 由正文解析出的章节目录
     private val _chapters = MutableStateFlow<List<Chapter>>(emptyList())
@@ -85,7 +88,11 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             val book = bookRepository.getBookById(bookId)
             _book.value = book
-            _savedIndex.value = book?.readProgress?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+            // 进度格式："段落索引:段内像素偏移"（兼容旧版纯索引格式）
+            val saved = book?.readProgress.orEmpty()
+            val parts = saved.split(':')
+            _savedIndex.value = parts.getOrNull(0)?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+            _savedOffset.value = parts.getOrNull(1)?.toIntOrNull()?.coerceAtLeast(0) ?: 0
             book?.let {
                 // 只更新阅读时间，保留原进度（退出时才写入新进度）
                 bookRepository.updateReadProgress(bookId, System.currentTimeMillis(), book.readProgress)
@@ -142,13 +149,11 @@ class ReaderViewModel @Inject constructor(
         _bgColorIndex.value = index
     }
 
-    // 退出时保存当前段落索引，下次打开自动恢复
-    // 返回导航会销毁 ViewModel 并取消 viewModelScope，写库必须用 NonCancellable 保护
-    fun saveProgress(bookId: Long, paragraphIndex: Int) {
-        viewModelScope.launch {
-            withContext(NonCancellable) {
-                bookRepository.updateReadProgress(bookId, System.currentTimeMillis(), paragraphIndex.toString())
-            }
+    // 保存当前段落索引与段内偏移，下次打开自动恢复
+    // 退出时 ViewModel 可能已被销毁（viewModelScope 已取消），必须用应用级 scope 写库
+    fun saveProgress(bookId: Long, paragraphIndex: Int, scrollOffset: Int) {
+        AppScope.io.launch {
+            bookRepository.updateReadProgress(bookId, System.currentTimeMillis(), "$paragraphIndex:$scrollOffset")
         }
     }
 }

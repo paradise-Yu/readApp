@@ -81,12 +81,15 @@ fun TxtReaderScreen(
     }
 
     // 位置记忆：内容加载完成后恢复到上次阅读段落
+    // 注意：必须在内容就绪后才置 restored=true，否则首帧空内容会提前消耗恢复机会
     var restored by remember(bookId) { mutableStateOf(false) }
     LaunchedEffect(content, savedIndex) {
-        if (!restored && content.isNotEmpty() && savedIndex > 0) {
-            listState.scrollToItem(savedIndex.coerceIn(0, paragraphs.lastIndex.coerceAtLeast(0)))
+        if (!restored && content.isNotEmpty()) {
+            if (savedIndex > 0) {
+                listState.scrollToItem(savedIndex.coerceIn(0, paragraphs.lastIndex.coerceAtLeast(0)))
+            }
+            restored = true
         }
-        restored = true
     }
 
     // 退出时保存当前段落索引

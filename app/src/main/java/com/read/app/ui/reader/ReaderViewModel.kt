@@ -12,6 +12,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -142,9 +143,12 @@ class ReaderViewModel @Inject constructor(
     }
 
     // 退出时保存当前段落索引，下次打开自动恢复
+    // 返回导航会销毁 ViewModel 并取消 viewModelScope，写库必须用 NonCancellable 保护
     fun saveProgress(bookId: Long, paragraphIndex: Int) {
         viewModelScope.launch {
-            bookRepository.updateReadProgress(bookId, System.currentTimeMillis(), paragraphIndex.toString())
+            withContext(NonCancellable) {
+                bookRepository.updateReadProgress(bookId, System.currentTimeMillis(), paragraphIndex.toString())
+            }
         }
     }
 }

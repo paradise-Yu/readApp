@@ -67,4 +67,9 @@ class FolderViewModel @Inject constructor(
             folderRepository.setFolderPassword(folder.id, password.ifBlank { null })
         }
     }
+
+    // 退出隐身模式，回到普通列表
+    fun exitSecretMode() {
+        session.exitSecretMode()
+    }
 }

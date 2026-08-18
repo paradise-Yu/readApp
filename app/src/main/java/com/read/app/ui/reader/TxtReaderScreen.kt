@@ -2,14 +2,16 @@ package com.read.app.ui.reader
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -22,10 +24,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 // 护眼阅读配色 —— 依据色彩科学调校：
@@ -54,10 +56,14 @@ fun TxtReaderScreen(
     val fontSize by viewModel.fontSize.collectAsState()
     val bgColorIndex by viewModel.bgColorIndex.collectAsState()
     val readMode by viewModel.readMode.collectAsState()
-    val savedRatio by viewModel.savedRatio.collectAsState()
+    val savedIndex by viewModel.savedIndex.collectAsState()
+    val chapters by viewModel.chapters.collectAsState()
+    val bookmarks by viewModel.bookmarks.collectAsState()
     var showSettings by remember { mutableStateOf(false) }
+    // 目录/书签面板：null=关闭，0=目录页，1=书签页
+    var sheetTab by remember { mutableIntStateOf(-1) }
 
-    val scrollState = rememberScrollState()
+    val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(bookId) { viewModel.loadBook(bookId) }
@@ -69,42 +75,66 @@ fun TxtReaderScreen(
         content.split(Regex("\\n\\s*\\n")).filter { it.isNotBlank() }
     }
 
-    // 位置记忆：内容渲染完成后恢复到上次阅读位置
+    // 当前阅读到的段落索引（滚动时自动更新）
+    val currentIndex by remember {
+        derivedStateOf { listState.firstVisibleItemIndex }
+    }
+
+    // 位置记忆：内容加载完成后恢复到上次阅读段落
     var restored by remember(bookId) { mutableStateOf(false) }
-    LaunchedEffect(content, savedRatio) {
-        if (!restored && content.isNotEmpty() && savedRatio > 0f) {
-            snapshotFlow { scrollState.maxValue }.first { it > 0 }
-            scrollState.scrollTo((savedRatio * scrollState.maxValue).toInt())
+    LaunchedEffect(content, savedIndex) {
+        if (!restored && content.isNotEmpty() && savedIndex > 0) {
+            listState.scrollToItem(savedIndex.coerceIn(0, paragraphs.lastIndex.coerceAtLeast(0)))
         }
         restored = true
     }
 
-    // 退出时保存当前阅读位置（比例 0~1）
+    // 退出时保存当前段落索引
     DisposableEffect(bookId) {
         onDispose {
-            if (scrollState.maxValue > 0) {
-                val ratio = scrollState.value.toFloat() / scrollState.maxValue
-                viewModel.saveProgress(bookId, ratio.toString())
+            if (paragraphs.isNotEmpty()) {
+                viewModel.saveProgress(bookId, listState.firstVisibleItemIndex)
             }
         }
     }
 
-    val progress = if (scrollState.maxValue > 0) {
-        scrollState.value.toFloat() / scrollState.maxValue
+    val progress = if (paragraphs.size > 1) {
+        currentIndex.toFloat() / (paragraphs.size - 1)
     } else 0f
+
+    // 当前所在章节（最后一个起始位置不超过当前段落的章节）
+    val currentChapter by remember {
+        derivedStateOf { chapters.lastOrNull { it.index <= currentIndex } }
+    }
+
+    val bookmarkIndices by remember {
+        derivedStateOf { bookmarks.map { it.paragraphIndex }.toSet() }
+    }
 
     Scaffold(
         containerColor = theme.bg,
         topBar = {
             // 顶栏与阅读背景同色，保证沉浸感
             TopAppBar(
-                title = { Text(book?.title ?: "阅读") },
+                title = { Text(book?.title ?: "阅读", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
                 actions = {
+                    // 一键添加当前位置书签
+                    IconButton(onClick = {
+                        if (paragraphs.isNotEmpty()) {
+                            viewModel.addBookmark(bookId, currentIndex, paragraphs[currentIndex])
+                        }
+                    }) {
+                        Icon(Icons.Default.BookmarkAdd, contentDescription = "添加书签")
+                    }
+                    // 目录 / 书签面板
+                    IconButton(onClick = { sheetTab = 0 }) {
+                        Icon(Icons.Default.ListAlt, contentDescription = "目录")
+                    }
                     IconButton(onClick = { showSettings = !showSettings }) {
                         Icon(Icons.Default.Settings, contentDescription = "设置")
                     }
@@ -124,51 +154,50 @@ fun TxtReaderScreen(
                 .padding(padding)
                 .background(theme.bg)
         ) {
-            // 正文：分段渲染，衬线字体 + 宽松行距 + 段间距
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = 20.dp, vertical = 12.dp)
+            // 正文：LazyColumn 分段渲染，支持按段落索引精准跳转（目录/书签/位置记忆）
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
             ) {
-                paragraphs.forEach { para ->
-                    Text(
-                        text = para,
-                        fontSize = fontSize.sp,
-                        lineHeight = (fontSize * 1.9).sp,
-                        color = theme.text,
-                        fontFamily = FontFamily.Serif,
-                        modifier = Modifier.padding(bottom = (fontSize * 0.8).dp)
-                    )
+                items(paragraphs.size) { index ->
+                    Column {
+                        // 已加书签的段落显示角标
+                        if (index in bookmarkIndices) {
+                            Icon(
+                                Icons.Default.Bookmark,
+                                contentDescription = "书签",
+                                modifier = Modifier.size(14.dp),
+                                tint = theme.text.copy(alpha = 0.55f)
+                            )
+                        }
+                        Text(
+                            text = paragraphs[index],
+                            fontSize = fontSize.sp,
+                            lineHeight = (fontSize * 1.9).sp,
+                            color = theme.text,
+                            fontFamily = FontFamily.Serif,
+                            modifier = Modifier.padding(bottom = (fontSize * 0.8).dp)
+                        )
+                    }
                 }
             }
 
             // 左右翻页模式：点左半屏上一页、右半屏下一页，左右滑动也可翻页
-            if (readMode == ReadMode.PAGE && scrollState.maxValue > 0) {
+            if (readMode == ReadMode.PAGE && paragraphs.size > 1) {
                 BoxWithConstraints(Modifier.fillMaxSize()) {
                     val pagePx = with(LocalDensity.current) { maxHeight.toPx() }
-                    var dragStart = 0
-                    var dragAccum by remember { mutableStateOf(0f) }
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .pointerInput(pagePx) {
                                 detectTapGestures { offset ->
-                                    val target = if (offset.x < size.width / 2) {
-                                        (scrollState.value - pagePx).toInt().coerceAtLeast(0)
-                                    } else {
-                                        (scrollState.value + pagePx).toInt().coerceAtMost(scrollState.maxValue)
+                                    scope.launch {
+                                        lazyListAnimatePage(listState, if (offset.x < size.width / 2) -pagePx else pagePx)
                                     }
-                                    scope.launch { scrollState.animateScrollTo(target) }
                                 }
-                                detectHorizontalDragGestures(
-                                    onDragStart = { dragAccum = 0f; dragStart = scrollState.value },
-                                    onDragEnd = { dragAccum = 0f }
-                                ) { _, dragAmount ->
-                                    dragAccum += dragAmount
-                                    val target = (dragStart - dragAccum).toInt()
-                                        .coerceIn(0, scrollState.maxValue)
-                                    scope.launch { scrollState.scrollTo(target) }
+                                detectHorizontalDragGestures { _, dragAmount ->
+                                    scope.launch { listState.scrollBy(-dragAmount) }
                                 }
                             }
                     )
@@ -176,15 +205,19 @@ fun TxtReaderScreen(
             }
 
             // 右侧滚动条：可拖动跳转
-            if (scrollState.maxValue > 0) {
+            if (paragraphs.size > 1) {
                 ReaderScrollBar(
-                    scrollState = scrollState,
+                    ratio = progress,
                     handleColor = theme.text,
+                    onSeek = { r ->
+                        val target = (r * paragraphs.lastIndex).toInt()
+                        scope.launch { listState.scrollToItem(target.coerceIn(0, paragraphs.lastIndex)) }
+                    },
                     modifier = Modifier.align(Alignment.CenterEnd)
                 )
             }
 
-            // 底部进度条：百分比 + 进度指示
+            // 底部状态栏：当前章节 + 进度百分比
             Surface(
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
                 color = theme.text.copy(alpha = 0.05f)
@@ -195,15 +228,17 @@ fun TxtReaderScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
+                        text = currentChapter?.title ?: "正文",
+                        fontSize = 11.sp,
+                        color = theme.text.copy(alpha = 0.6f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Text(
                         text = "${(progress * 100).toInt()}%",
                         fontSize = 11.sp,
                         color = theme.text.copy(alpha = 0.6f)
-                    )
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.weight(1f).height(3.dp),
-                        color = theme.text.copy(alpha = 0.45f),
-                        trackColor = theme.text.copy(alpha = 0.1f)
                     )
                     if (readMode == ReadMode.PAGE) {
                         Text(
@@ -215,6 +250,26 @@ fun TxtReaderScreen(
                 }
             }
         }
+    }
+
+    // 目录 / 书签面板
+    if (sheetTab >= 0) {
+        ReaderSheet(
+            tab = sheetTab,
+            onTabChange = { sheetTab = it },
+            chapters = chapters,
+            bookmarks = bookmarks,
+            currentIndex = currentIndex,
+            onJump = { index ->
+                scope.launch { listState.scrollToItem(index.coerceIn(0, paragraphs.lastIndex.coerceAtLeast(0))) }
+                sheetTab = -1
+            },
+            onAddBookmark = {
+                if (paragraphs.isNotEmpty()) viewModel.addBookmark(bookId, currentIndex, paragraphs[currentIndex])
+            },
+            onDeleteBookmark = { viewModel.removeBookmark(it) },
+            onDismiss = { sheetTab = -1 }
+        )
     }
 
     // 阅读设置弹窗
@@ -275,23 +330,134 @@ fun TxtReaderScreen(
     }
 }
 
-// 可拖动的竖向滚动条
+// 翻页模式下按整页平滑滚动
+private suspend fun lazyListAnimatePage(
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    px: Float
+) {
+    listState.animateScrollBy(px)
+}
+
+// 目录 + 书签面板（底部弹出，两个 Tab）
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReaderSheet(
+    tab: Int,
+    onTabChange: (Int) -> Unit,
+    chapters: List<Chapter>,
+    bookmarks: List<com.read.app.domain.model.Bookmark>,
+    currentIndex: Int,
+    onJump: (Int) -> Unit,
+    onAddBookmark: () -> Unit,
+    onDeleteBookmark: (com.read.app.domain.model.Bookmark) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+            TabRow(selectedTabIndex = tab) {
+                Tab(selected = tab == 0, onClick = { onTabChange(0) }, text = { Text("目录 (${chapters.size})") })
+                Tab(selected = tab == 1, onClick = { onTabChange(1) }, text = { Text("书签 (${bookmarks.size})") })
+            }
+
+            if (tab == 0) {
+                if (chapters.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().height(160.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "未识别到章节\n（支持\"第X章/第X节/序章/楔子/Chapter X\"等常见格式）",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    // 自动滚动到当前章节附近
+                    val chapterListState = rememberLazyListState(
+                        initialFirstVisibleItemIndex = chapters.indexOfLast { it.index <= currentIndex }.coerceAtLeast(0)
+                    )
+                    LazyColumn(state = chapterListState, modifier = Modifier.height(380.dp)) {
+                        items(chapters.size) { i ->
+                            val chapter = chapters[i]
+                            val isCurrent = chapters.lastOrNull { it.index <= currentIndex }?.index == chapter.index
+                            ListItem(
+                                headlineContent = {
+                                    Text(
+                                        chapter.title,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = if (isCurrent) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.onSurface
+                                    )
+                                },
+                                modifier = Modifier.clickable { onJump(chapter.index) }
+                            )
+                        }
+                    }
+                }
+            } else {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // 在当前阅读位置添加书签
+                    TextButton(
+                        onClick = onAddBookmark,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    ) {
+                        Icon(Icons.Default.BookmarkAdd, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("在当前阅读位置添加书签")
+                    }
+                    if (bookmarks.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().height(120.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "暂无书签",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        LazyColumn(modifier = Modifier.height(320.dp)) {
+                            items(bookmarks.size) { i ->
+                                val bm = bookmarks[i]
+                                ListItem(
+                                    headlineContent = {
+                                        Text(bm.snippet, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    },
+                                    supportingContent = { Text("第 ${bm.paragraphIndex + 1} 段") },
+                                    leadingContent = {
+                                        Icon(Icons.Default.Bookmark, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    },
+                                    trailingContent = {
+                                        IconButton(onClick = { onDeleteBookmark(bm) }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "删除书签")
+                                        }
+                                    },
+                                    modifier = Modifier.clickable { onJump(bm.paragraphIndex) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 可拖动的竖向滚动条：ratio 为当前阅读进度（0~1），onSeek 回调拖动目标比例
 @Composable
 private fun ReaderScrollBar(
-    scrollState: androidx.compose.foundation.ScrollState,
+    ratio: Float,
     handleColor: Color,
+    onSeek: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scope = rememberCoroutineScope()
-
     BoxWithConstraints(modifier = modifier.fillMaxHeight().width(28.dp)) {
         val density = LocalDensity.current
         val trackPx = with(density) { maxHeight.toPx() }
         val handlePx = with(density) { 56.dp.toPx() }
-        val range = scrollState.maxValue.toFloat()
-        val handleY = if (range > 0f) {
-            (scrollState.value / range) * (trackPx - handlePx)
-        } else 0f
+        val handleY = ratio * (trackPx - handlePx)
 
         // 轨道
         Box(
@@ -310,15 +476,17 @@ private fun ReaderScrollBar(
                 .height(56.dp)
                 .clip(RoundedCornerShape(4.dp))
                 .background(handleColor.copy(alpha = 0.45f))
-                .pointerInput(trackPx, handlePx, range) {
-                    var startValue = 0
+                .pointerInput(trackPx, handlePx) {
+                    var startY = 0f
+                    var startRatio = 0f
                     detectDragGestures(
-                        onDragStart = { startValue = scrollState.value },
-                        onDrag = { change, drag ->
+                        onDragStart = { offset -> startY = offset.y; startRatio = ratio },
+                        onDrag = { change, _ ->
                             change.consume()
+                            val range = trackPx - handlePx
                             if (range > 0f) {
-                                val target = startValue + drag.y / (trackPx - handlePx) * range
-                                scope.launch { scrollState.scrollTo(target.toInt().coerceIn(0, scrollState.maxValue)) }
+                                val target = (startRatio + (change.position.y - startY) / range).coerceIn(0f, 1f)
+                                onSeek(target)
                             }
                         }
                     )

@@ -47,6 +47,15 @@ fun FolderScreen(
                     }
                 },
                 actions = {
+                    // 隐身模式下提供一键退出：回到普通书架
+                    if (inSecretMode) {
+                        IconButton(onClick = {
+                            viewModel.exitSecretMode()
+                            onBackClick()
+                        }) {
+                            Icon(Icons.Default.LockOpen, contentDescription = "退出隐身模式")
+                        }
+                    }
                     IconButton(onClick = { folderPickerLauncher.launch(null) }) {
                         Icon(Icons.Default.CreateNewFolder, contentDescription = "添加文件夹")
                     }

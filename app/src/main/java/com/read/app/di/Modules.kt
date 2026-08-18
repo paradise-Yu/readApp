@@ -3,13 +3,16 @@ package com.read.app.di
 import android.content.Context
 import androidx.room.Room
 import com.read.app.data.local.BookDao
+import com.read.app.data.local.BookmarkDao
 import com.read.app.data.local.FolderDao
 import com.read.app.data.local.ReadDatabase
 import com.read.app.data.local.TagDao
 import com.read.app.data.repository.BookRepositoryImpl
+import com.read.app.data.repository.BookmarkRepositoryImpl
 import com.read.app.data.repository.FolderRepositoryImpl
 import com.read.app.data.repository.TagRepositoryImpl
 import com.read.app.domain.repository.BookRepository
+import com.read.app.domain.repository.BookmarkRepository
 import com.read.app.domain.repository.FolderRepository
 import com.read.app.domain.repository.TagRepository
 import dagger.Binds
@@ -28,7 +31,7 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): ReadDatabase =
         Room.databaseBuilder(context, ReadDatabase::class.java, "read_database")
-            .addMigrations(ReadDatabase.MIGRATION_1_2)
+            .addMigrations(ReadDatabase.MIGRATION_1_2, ReadDatabase.MIGRATION_2_3)
             .build()
 
     @Provides
@@ -39,6 +42,9 @@ object DatabaseModule {
 
     @Provides
     fun provideFolderDao(database: ReadDatabase): FolderDao = database.folderDao()
+
+    @Provides
+    fun provideBookmarkDao(database: ReadDatabase): BookmarkDao = database.bookmarkDao()
 }
 
 @Module
@@ -56,4 +62,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindFolderRepository(impl: FolderRepositoryImpl): FolderRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindBookmarkRepository(impl: BookmarkRepositoryImpl): BookmarkRepository
 }

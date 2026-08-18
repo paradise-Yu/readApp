@@ -29,3 +29,11 @@ data class Folder(
     val addedTime: Long = System.currentTimeMillis(),
     val password: String? = null
 )
+
+data class Bookmark(
+    val id: Long = 0,
+    val bookId: Long,
+    val paragraphIndex: Int,
+    val snippet: String,
+    val createdTime: Long = System.currentTimeMillis()
+)

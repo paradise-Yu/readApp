@@ -1,6 +1,7 @@
 package com.read.app.domain.repository
 
 import com.read.app.domain.model.Book
+import com.read.app.domain.model.Bookmark
 import com.read.app.domain.model.Folder
 import com.read.app.domain.model.Tag
 import kotlinx.coroutines.flow.Flow
@@ -35,4 +36,10 @@ interface FolderRepository {
     suspend fun deleteFolder(folder: Folder)
     suspend fun getFolderById(id: Long): Folder?
     suspend fun setFolderPassword(id: Long, password: String?)
+}
+
+interface BookmarkRepository {
+    fun getBookmarks(bookId: Long): Flow<List<Bookmark>>
+    suspend fun addBookmark(bookmark: Bookmark): Long
+    suspend fun deleteBookmark(bookmark: Bookmark)
 }

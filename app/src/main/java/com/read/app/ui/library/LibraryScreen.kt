@@ -78,6 +78,12 @@ fun LibraryScreen(
                     )
                 },
                 actions = {
+                    // 隐身模式下顶栏直接提供退出入口，一键回到普通书架
+                    if (inSecretMode) {
+                        IconButton(onClick = { viewModel.exitSecretMode() }) {
+                            Icon(Icons.Default.LockOpen, contentDescription = "退出隐身模式")
+                        }
+                    }
                     IconButton(onClick = onSearchClick) {
                         Icon(Icons.Default.Search, contentDescription = "搜索")
                     }

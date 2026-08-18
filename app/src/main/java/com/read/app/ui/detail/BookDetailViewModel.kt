@@ -36,6 +36,15 @@ class BookDetailViewModel @Inject constructor(
         }
     }
 
+    // 选择已有标签直接加到本书（标签是公共数据，可被多本书共用）
+    fun addExistingTag(bookId: Long, tagId: Long) {
+        viewModelScope.launch {
+            tagRepository.addTagToBook(bookId, tagId)
+            loadBook(bookId)
+        }
+    }
+
+    // 新建标签并加到本书；若同名标签已存在则直接复用
     fun addTag(bookId: Long, tagName: String, color: Int) {
         viewModelScope.launch {
             val existingTags = tagRepository.getAllTagsOnce()

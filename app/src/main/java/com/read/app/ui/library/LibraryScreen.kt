@@ -2,14 +2,17 @@ package com.read.app.ui.library
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -18,6 +21,8 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -42,6 +47,8 @@ fun LibraryScreen(
     val sortOrder by viewModel.sortOrder.collectAsState()
     val folders by viewModel.visibleFolders.collectAsState()
     val selectedFolderId by viewModel.selectedFolderId.collectAsState()
+    val allTags by viewModel.allTags.collectAsState()
+    val selectedTagName by viewModel.selectedTagName.collectAsState()
     val inSecretMode by viewModel.inSecretMode.collectAsState()
     var showSortMenu by remember { mutableStateOf(false) }
     var showFolderMenu by remember { mutableStateOf(false) }
@@ -181,6 +188,31 @@ fun LibraryScreen(
             onRefresh = { viewModel.refresh() },
             modifier = Modifier.fillMaxSize().padding(padding)
         ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+        // 标签筛选行：点击公共标签筛书，再点取消
+        if (allTags.isNotEmpty()) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                items(allTags, key = { it.id }) { tag ->
+                    FilterChip(
+                        selected = selectedTagName == tag.name,
+                        onClick = { viewModel.setTagFilter(tag.name) },
+                        label = { Text(tag.name, style = MaterialTheme.typography.labelMedium) },
+                        leadingIcon = {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(tag.color))
+                            )
+                        }
+                    )
+                }
+            }
+        }
+        Box(modifier = Modifier.fillMaxSize()) {
         if (books.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -224,6 +256,8 @@ fun LibraryScreen(
                 }
             }
         }
+        } // 内容 Box
+        } // 标签列 Column
         } // PullToRefreshBox
     }
 

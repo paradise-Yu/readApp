@@ -97,27 +97,10 @@ fun BookDetailScreen(
                         } else {
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 b.tags.forEach { tag ->
-                                    var showRemove by remember { mutableStateOf(false) }
-                                    if (showRemove) {
-                                        AlertDialog(
-                                            onDismissRequest = { showRemove = false },
-                                            confirmButton = {
-                                                TextButton(onClick = {
-                                                    viewModel.removeTag(b.id, tag.id)
-                                                    showRemove = false
-                                                }) { Text("移除") }
-                                            },
-                                            dismissButton = {
-                                                TextButton(onClick = { showRemove = false }) { Text("取消") }
-                                            },
-                                            title = { Text("移除标签") },
-                                            text = { Text("确定要移除标签 \"${tag.name}\" 吗？") }
-                                        )
-                                    }
-                                    TagChip(
+                                    RemovableTagChip(
                                         name = tag.name,
                                         color = tag.color,
-                                        onClick = { showRemove = true }
+                                        onRemove = { viewModel.removeTag(b.id, tag.id) }
                                     )
                                 }
                             }
@@ -131,7 +114,11 @@ fun BookDetailScreen(
     if (showAddTagDialog) {
         AddTagDialog(
             existingTags = allTags,
+            currentTagIds = book?.tags?.map { it.id }?.toSet() ?: emptySet(),
             onDismiss = { showAddTagDialog = false },
+            onSelectExisting = { tagId ->
+                book?.let { viewModel.addExistingTag(it.id, tagId) }
+            },
             onConfirm = { name, color ->
                 book?.let { viewModel.addTag(it.id, name, color) }
                 showAddTagDialog = false
@@ -140,10 +127,37 @@ fun BookDetailScreen(
     }
 }
 
+// 带关闭按钮的标签：点 ✕ 仅解除与本书的关联，不删除公共标签本身
+@Composable
+private fun RemovableTagChip(name: String, color: Int, onRemove: () -> Unit) {
+    Surface(
+        shape = CircleShape,
+        color = Color(color).copy(alpha = 0.15f)
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 10.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(name, style = MaterialTheme.typography.labelLarge, color = Color(color))
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                Icons.Default.Close,
+                contentDescription = "移除",
+                modifier = Modifier.size(16.dp).clickable { onRemove() },
+                tint = Color(color)
+            )
+        }
+    }
+}
+
+// 添加标签弹窗：上半部分选择已有公共标签，下半部分新建
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AddTagDialog(
     existingTags: List<com.read.app.domain.model.Tag>,
+    currentTagIds: Set<Long>,
     onDismiss: () -> Unit,
+    onSelectExisting: (Long) -> Unit,
     onConfirm: (String, Int) -> Unit
 ) {
     var tagName by remember { mutableStateOf("") }
@@ -155,16 +169,41 @@ private fun AddTagDialog(
         0xFFFF5722.toInt(), 0xFF607D8B.toInt()
     )
 
+    // 尚未加到本书的公共标签
+    val selectableTags = existingTags.filter { it.id !in currentTagIds }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("添加标签") },
         text = {
-            Column {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                if (selectableTags.isNotEmpty()) {
+                    Text("选择已有标签", style = MaterialTheme.typography.labelMedium)
+                    Spacer(Modifier.height(8.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        selectableTags.forEach { tag ->
+                            TagChip(
+                                name = tag.name,
+                                color = tag.color,
+                                onClick = { onSelectExisting(tag.id) }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(16.dp))
+                }
+                Text("新建标签", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = tagName,
                     onValueChange = { tagName = it },
                     label = { Text("标签名称") },
-                    singleLine = true
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(16.dp))
                 Text("选择颜色", style = MaterialTheme.typography.labelMedium)
@@ -191,7 +230,7 @@ private fun AddTagDialog(
             TextButton(
                 onClick = { if (tagName.isNotBlank()) onConfirm(tagName.trim(), selectedColor) },
                 enabled = tagName.isNotBlank()
-            ) { Text("添加") }
+            ) { Text("新建并添加") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("取消") }

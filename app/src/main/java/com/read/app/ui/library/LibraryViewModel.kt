@@ -6,8 +6,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.read.app.domain.model.Book
 import com.read.app.domain.model.Folder
+import com.read.app.domain.model.Tag
 import com.read.app.domain.repository.BookRepository
 import com.read.app.domain.repository.FolderRepository
+import com.read.app.domain.repository.TagRepository
 import com.read.app.domain.session.ReaderSession
 import com.read.app.util.BookImporter
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -26,6 +28,7 @@ enum class SortOrder(val label: String) {
 class LibraryViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     private val folderRepository: FolderRepository,
+    private val tagRepository: TagRepository,
     private val session: ReaderSession,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -43,6 +46,14 @@ class LibraryViewModel @Inject constructor(
     private val _selectedFolderId = MutableStateFlow<Long?>(null)
     val selectedFolderId: StateFlow<Long?> = _selectedFolderId.asStateFlow()
 
+    // 标签筛选（null = 全部）
+    private val _selectedTagName = MutableStateFlow<String?>(null)
+    val selectedTagName: StateFlow<String?> = _selectedTagName.asStateFlow()
+
+    // 全部公共标签
+    val allTags: StateFlow<List<Tag>> = tagRepository.getAllTags()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // 是否处于隐身模式
     val inSecretMode: StateFlow<Boolean> = session.secretPassword
         .map { it != null }
@@ -57,13 +68,20 @@ class LibraryViewModel @Inject constructor(
         else folders.filter { it.password == pwd }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // 筛选状态：文件夹 / 标签 / 隐身密码（combine 最多 5 路，先合并）
+    private val filterState = combine(
+        _selectedFolderId,
+        _selectedTagName,
+        session.secretPassword
+    ) { folderId, tagName, pwd -> Triple(folderId, tagName, pwd) }
+
     val books: StateFlow<List<Book>> = combine(
         bookRepository.getAllBooks(),
         _sortOrder,
-        _selectedFolderId,
-        session.secretPassword,
+        filterState,
         folderRepository.getAllFolders()
-    ) { all, order, folderId, pwd, folders ->
+    ) { all, order, filter, folders ->
+        val (folderId, tagName, pwd) = filter
         val hiddenFolderIds = folders.filter { it.password != null }.map { it.id }.toSet()
         val filtered = if (pwd != null) {
             // 隐身模式：只显示绑定该密码的文件夹下的书
@@ -75,6 +93,9 @@ class LibraryViewModel @Inject constructor(
                 (b.folderId == null || b.folderId !in hiddenFolderIds) &&
                     (folderId == null || b.folderId == folderId)
             }
+        }.let { list ->
+            // 标签筛选
+            if (tagName == null) list else list.filter { b -> b.tags.any { it.name == tagName } }
         }
         when (order) {
             SortOrder.RECENT -> filtered.sortedByDescending { it.lastReadTime ?: 0L }
@@ -100,6 +121,11 @@ class LibraryViewModel @Inject constructor(
         _selectedFolderId.value = folderId
     }
 
+    // 再次点击已选中的标签则取消筛选
+    fun setTagFilter(tagName: String?) {
+        _selectedTagName.value = if (_selectedTagName.value == tagName) null else tagName
+    }
+
     // 输入密码进入隐身模式；密码无匹配文件夹时提示
     fun enterSecretMode(password: String) {
         viewModelScope.launch {
@@ -107,6 +133,7 @@ class LibraryViewModel @Inject constructor(
             if (matched) {
                 session.enterSecretMode(password)
                 _selectedFolderId.value = null
+                _selectedTagName.value = null
                 _scanMessage.value = "已进入隐身模式"
             } else {
                 _scanMessage.value = "密码不正确"
@@ -118,6 +145,7 @@ class LibraryViewModel @Inject constructor(
     fun exitSecretMode() {
         session.exitSecretMode()
         _selectedFolderId.value = null
+        _selectedTagName.value = null
     }
 
     fun refresh() {

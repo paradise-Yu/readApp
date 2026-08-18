@@ -8,6 +8,7 @@ import com.read.app.domain.model.Tag
 import com.read.app.domain.repository.BookRepository
 import com.read.app.domain.repository.FolderRepository
 import com.read.app.domain.repository.TagRepository
+import com.read.app.domain.session.ReaderSession
 import com.read.app.util.FileUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -24,6 +25,7 @@ class SearchViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     private val tagRepository: TagRepository,
     private val folderRepository: FolderRepository,
+    private val session: ReaderSession,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -67,9 +69,15 @@ class SearchViewModel @Inject constructor(
                 return@launch
             }
 
-            // 隐藏文件夹（已设密码）中的书不出现在搜索结果里
-            val hiddenFolderIds = folderRepository.getAllFolders().first()
-                .filter { it.password != null }.map { it.id }.toSet()
+            // 含密码文件的文件夹中的书不出现在搜索结果里（隐身模式下当前密码绑定的除外）
+            val folders = folderRepository.getAllFolders().first()
+            val pwdMap = withContext(Dispatchers.IO) {
+                folders.associate { it.id to FileUtil.readFolderPassword(context, it.path) }
+            }
+            val secret = session.secretPassword.value
+            val hiddenFolderIds = folders
+                .filter { pwdMap[it.id] != null && pwdMap[it.id] != secret }
+                .map { it.id }.toSet()
             fun List<Book>.visible() = filter { it.folderId == null || it.folderId !in hiddenFolderIds }
 
             // Search by tag if selected

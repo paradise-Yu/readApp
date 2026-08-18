@@ -11,6 +11,9 @@ import java.nio.charset.CodingErrorAction
 
 object FileUtil {
 
+    // 文件夹密码文件名：明文存放在文件夹根目录，手工删除该文件即可解除隐藏
+    const val PASSWORD_FILE_NAME = "密码.txt"
+
     fun formatFileSize(bytes: Long): String {
         return when {
             bytes < 1024 -> "$bytes B"
@@ -52,7 +55,8 @@ object FileUtil {
         dir.listFiles().forEach { doc ->
             when {
                 doc.isDirectory -> walkTree(doc, out)
-                doc.isFile && isBookName(doc.name) ->
+                // 密码文件不是书籍，跳过
+                doc.isFile && doc.name != PASSWORD_FILE_NAME && isBookName(doc.name) ->
                     out.add(ScannedBook(doc.uri.toString(), doc.name ?: "", doc.length()))
             }
         }
@@ -63,8 +67,54 @@ object FileUtil {
         val dir = File(path)
         if (!dir.exists() || !dir.isDirectory) return emptyList()
         return dir.walkTopDown()
-            .filter { isSupportedFile(it) }
+            .filter { it.name != PASSWORD_FILE_NAME && isSupportedFile(it) }
             .toList()
+    }
+
+    // ---------- 文件夹密码文件（明文存放在文件夹根目录） ----------
+
+    // 读取文件夹内的密码文件内容；文件不存在返回 null
+    fun readFolderPassword(context: Context, folderPath: String): String? {
+        return try {
+            if (isUriPath(folderPath)) {
+                val root = DocumentFile.fromTreeUri(context, Uri.parse(folderPath)) ?: return null
+                val pwdFile = root.findFile(PASSWORD_FILE_NAME) ?: return null
+                context.contentResolver.openInputStream(pwdFile.uri)?.use { input ->
+                    String(input.readBytes(), Charsets.UTF_8).trim()
+                }?.takeIf { it.isNotEmpty() }
+            } else {
+                val f = File(folderPath, PASSWORD_FILE_NAME)
+                if (f.exists()) f.readText(Charsets.UTF_8).trim().takeIf { it.isNotEmpty() } else null
+            }
+        } catch (_: Exception) { null }
+    }
+
+    // 写入/删除密码文件：空密码 = 删除文件（等同手工删除，解除隐藏）
+    fun writeFolderPassword(context: Context, folderPath: String, password: String?): Boolean {
+        return try {
+            if (isUriPath(folderPath)) {
+                val root = DocumentFile.fromTreeUri(context, Uri.parse(folderPath)) ?: return false
+                val existing = root.findFile(PASSWORD_FILE_NAME)
+                if (password.isNullOrBlank()) {
+                    existing?.delete() ?: true
+                } else {
+                    existing?.delete()
+                    val doc = root.createFile("text/plain", PASSWORD_FILE_NAME) ?: return false
+                    context.contentResolver.openOutputStream(doc.uri)?.use {
+                        it.write(password.toByteArray(Charsets.UTF_8))
+                    } ?: return false
+                    true
+                }
+            } else {
+                val f = File(folderPath, PASSWORD_FILE_NAME)
+                if (password.isNullOrBlank()) {
+                    if (f.exists()) f.delete() else true
+                } else {
+                    f.writeText(password, Charsets.UTF_8)
+                    true
+                }
+            }
+        } catch (_: Exception) { false }
     }
 
     // ---------- 读取 ----------

@@ -12,10 +12,13 @@ import com.read.app.domain.repository.FolderRepository
 import com.read.app.domain.repository.TagRepository
 import com.read.app.domain.session.ReaderSession
 import com.read.app.util.BookImporter
+import com.read.app.util.FileUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 enum class SortOrder(val label: String) {
@@ -59,13 +62,27 @@ class LibraryViewModel @Inject constructor(
         .map { it != null }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    // 密码以明文文件形式存放在各文件夹内，文件为唯一可信来源（手工删除文件即解除隐藏）
+    private val _pwdMap = MutableStateFlow<Map<Long, String?>>(emptyMap())
+
+    init {
+        viewModelScope.launch {
+            folderRepository.getAllFolders().collect { folders ->
+                _pwdMap.value = withContext(Dispatchers.IO) {
+                    folders.associate { it.id to FileUtil.readFolderPassword(context, it.path) }
+                }
+            }
+        }
+    }
+
     // 当前模式下可见的文件夹：普通模式只显示未设密码的；隐身模式只显示绑定当前密码的
     val visibleFolders: StateFlow<List<Folder>> = combine(
         folderRepository.getAllFolders(),
-        session.secretPassword
-    ) { folders, pwd ->
-        if (pwd == null) folders.filter { it.password == null }
-        else folders.filter { it.password == pwd }
+        session.secretPassword,
+        _pwdMap
+    ) { folders, pwd, pwdMap ->
+        if (pwd == null) folders.filter { pwdMap[it.id] == null }
+        else folders.filter { pwdMap[it.id] == pwd }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // 筛选状态：文件夹 / 标签 / 隐身密码（combine 最多 5 路，先合并）
@@ -79,13 +96,14 @@ class LibraryViewModel @Inject constructor(
         bookRepository.getAllBooks(),
         _sortOrder,
         filterState,
-        folderRepository.getAllFolders()
-    ) { all, order, filter, folders ->
+        folderRepository.getAllFolders(),
+        _pwdMap
+    ) { all, order, filter, folders, pwdMap ->
         val (folderId, tagName, pwd) = filter
-        val hiddenFolderIds = folders.filter { it.password != null }.map { it.id }.toSet()
+        val hiddenFolderIds = folders.filter { pwdMap[it.id] != null }.map { it.id }.toSet()
         val filtered = if (pwd != null) {
             // 隐身模式：只显示绑定该密码的文件夹下的书
-            val ids = folders.filter { it.password == pwd }.map { it.id }.toSet()
+            val ids = folders.filter { pwdMap[it.id] == pwd }.map { it.id }.toSet()
             all.filter { it.folderId in ids }
         } else {
             // 普通模式：隐藏已设密码文件夹的书，并按选中文件夹筛选
@@ -126,10 +144,13 @@ class LibraryViewModel @Inject constructor(
         _selectedTagName.value = if (_selectedTagName.value == tagName) null else tagName
     }
 
-    // 输入密码进入隐身模式；密码无匹配文件夹时提示
+    // 输入密码进入隐身模式；与文件夹内密码文件内容比对，无匹配时提示
     fun enterSecretMode(password: String) {
         viewModelScope.launch {
-            val matched = folderRepository.getAllFolders().first().any { it.password == password }
+            val folders = folderRepository.getAllFolders().first()
+            val matched = withContext(Dispatchers.IO) {
+                folders.any { FileUtil.readFolderPassword(context, it.path) == password }
+            }
             if (matched) {
                 session.enterSecretMode(password)
                 _selectedFolderId.value = null
@@ -155,6 +176,10 @@ class LibraryViewModel @Inject constructor(
                 val allFolders = folderRepository.getAllFolders().first()
                 allFolders.forEach { folder ->
                     scanFolderInternal(folder.path, folder.id)
+                }
+                // 重读密码文件：用户可能手工删除/修改了文件夹内的密码文件
+                _pwdMap.value = withContext(Dispatchers.IO) {
+                    allFolders.associate { it.id to FileUtil.readFolderPassword(context, it.path) }
                 }
             } finally {
                 _isRefreshing.value = false

@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.read.app.domain.model.Folder
+import com.read.app.util.FileUtil
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -26,6 +27,7 @@ fun FolderScreen(
 ) {
     val folders by viewModel.folders.collectAsState()
     val inSecretMode by viewModel.inSecretMode.collectAsState()
+    val folderPasswords by viewModel.folderPasswords.collectAsState()
 
     val folderPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -91,6 +93,7 @@ fun FolderScreen(
                 items(folders, key = { it.id }) { folder ->
                     FolderItem(
                         folder = folder,
+                        currentPassword = folderPasswords[folder.id],
                         onDelete = { viewModel.deleteFolder(folder) },
                         onSetPassword = { pwd -> viewModel.setFolderPassword(folder, pwd) }
                     )
@@ -102,7 +105,12 @@ fun FolderScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FolderItem(folder: Folder, onDelete: () -> Unit, onSetPassword: (String) -> Unit) {
+private fun FolderItem(
+    folder: Folder,
+    currentPassword: String?,
+    onDelete: () -> Unit,
+    onSetPassword: (String) -> Unit
+) {
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
     var passwordInput by remember(folder.id) { mutableStateOf("") }
@@ -110,7 +118,7 @@ private fun FolderItem(folder: Folder, onDelete: () -> Unit, onSetPassword: (Str
     Box(modifier = Modifier.combinedClickable(
         onClick = {},
         onLongClick = {
-            passwordInput = folder.password ?: ""
+            passwordInput = currentPassword ?: ""
             showPasswordDialog = true
         }
     )) {
@@ -145,7 +153,7 @@ private fun FolderItem(folder: Folder, onDelete: () -> Unit, onSetPassword: (Str
         )
     }
 
-    // 长按设置访问密码：设密码后文件夹在普通模式下隐藏，输入密码才能进入
+    // 长按设置访问密码：密码以明文文件（密码.txt）保存在该文件夹内，设后隐藏，删文件即解除
     if (showPasswordDialog) {
         AlertDialog(
             onDismissRequest = { showPasswordDialog = false },
@@ -153,7 +161,9 @@ private fun FolderItem(folder: Folder, onDelete: () -> Unit, onSetPassword: (Str
             text = {
                 Column {
                     Text(
-                        "设置后该文件夹将被隐藏，需长按书架筛选按钮输入密码才能进入。\n留空则取消隐藏。",
+                        "设置后密码将以明文文件（${FileUtil.PASSWORD_FILE_NAME}）保存在该文件夹内，" +
+                            "文件夹在普通列表中隐藏，输入密码才能进入。\n" +
+                            "如需解除隐藏，直接删除文件夹内的密码文件，或在下方留空保存。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -26,5 +26,6 @@ data class Folder(
     val id: Long = 0,
     val path: String,
     val name: String,
-    val addedTime: Long = System.currentTimeMillis()
+    val addedTime: Long = System.currentTimeMillis(),
+    val password: String? = null
 )

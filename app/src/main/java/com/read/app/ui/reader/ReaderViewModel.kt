@@ -14,6 +14,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
+// 阅读模式：上下滚动 / 左右翻页
+enum class ReadMode(val label: String) {
+    SCROLL("上下滚动"),
+    PAGE("左右翻页")
+}
+
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
     private val bookRepository: BookRepository,
@@ -32,12 +38,25 @@ class ReaderViewModel @Inject constructor(
     private val _bgColorIndex = MutableStateFlow(0)
     val bgColorIndex: StateFlow<Int> = _bgColorIndex.asStateFlow()
 
+    private val _readMode = MutableStateFlow(ReadMode.SCROLL)
+    val readMode: StateFlow<ReadMode> = _readMode.asStateFlow()
+
+    // 上次阅读的位置比例（0~1），用于打开时恢复
+    private val _savedRatio = MutableStateFlow(0f)
+    val savedRatio: StateFlow<Float> = _savedRatio.asStateFlow()
+
+    fun toggleReadMode() {
+        _readMode.value = if (_readMode.value == ReadMode.SCROLL) ReadMode.PAGE else ReadMode.SCROLL
+    }
+
     fun loadBook(bookId: Long) {
         viewModelScope.launch {
             val book = bookRepository.getBookById(bookId)
             _book.value = book
+            _savedRatio.value = book?.readProgress?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 0f
             book?.let {
-                bookRepository.updateReadProgress(bookId, System.currentTimeMillis(), null)
+                // 只更新阅读时间，保留原进度（退出时才写入新进度）
+                bookRepository.updateReadProgress(bookId, System.currentTimeMillis(), book.readProgress)
                 // TXT 才需要读取文本内容；PDF/EPUB 由各自渲染组件直接读文件
                 if (book.format.lowercase() == "txt") {
                     val text = withContext(Dispatchers.IO) {

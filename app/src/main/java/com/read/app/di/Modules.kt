@@ -28,6 +28,7 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): ReadDatabase =
         Room.databaseBuilder(context, ReadDatabase::class.java, "read_database")
+            .addMigrations(ReadDatabase.MIGRATION_1_2)
             .build()
 
     @Provides

@@ -26,6 +26,9 @@ class FolderRepositoryImpl @Inject constructor(
     override suspend fun getFolderById(id: Long): Folder? =
         folderDao.getFolderById(id)?.toFolder()
 
-    private fun FolderEntity.toFolder() = Folder(id = id, path = path, name = name, addedTime = addedTime)
-    private fun Folder.toEntity() = FolderEntity(id = id, path = path, name = name, addedTime = addedTime)
+    override suspend fun setFolderPassword(id: Long, password: String?) =
+        folderDao.updatePassword(id, password)
+
+    private fun FolderEntity.toFolder() = Folder(id = id, path = path, name = name, addedTime = addedTime, password = password)
+    private fun Folder.toEntity() = FolderEntity(id = id, path = path, name = name, addedTime = addedTime, password = password)
 }

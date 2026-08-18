@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.read.app.domain.model.Book
 import com.read.app.domain.model.Tag
 import com.read.app.domain.repository.BookRepository
+import com.read.app.domain.repository.FolderRepository
 import com.read.app.domain.repository.TagRepository
 import com.read.app.util.FileUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,6 +23,7 @@ import javax.inject.Inject
 class SearchViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     private val tagRepository: TagRepository,
+    private val folderRepository: FolderRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -65,17 +67,23 @@ class SearchViewModel @Inject constructor(
                 return@launch
             }
 
+            // 隐藏文件夹（已设密码）中的书不出现在搜索结果里
+            val hiddenFolderIds = folderRepository.getAllFolders().first()
+                .filter { it.password != null }.map { it.id }.toSet()
+            fun List<Book>.visible() = filter { it.folderId == null || it.folderId !in hiddenFolderIds }
+
             // Search by tag if selected
             if (tag != null && q.isBlank()) {
                 bookRepository.searchBooksByTag(tag).collect {
-                    _results.value = it
+                    _results.value = it.visible()
                 }
                 return@launch
             }
 
             // Search by text (title/author)
             if (q.isNotBlank() && tag == null) {
-                bookRepository.searchBooks(q).collect { books ->
+                bookRepository.searchBooks(q).collect { rawBooks ->
+                    val books = rawBooks.visible()
                     _results.value = books
                     // Full-text search in TXT files
                     val fullTextMatches = mutableMapOf<Long, List<String>>()
@@ -100,8 +108,8 @@ class SearchViewModel @Inject constructor(
 
             // Combined: search by text AND filter by tag
             if (q.isNotBlank() && tag != null) {
-                bookRepository.searchBooks(q).collect { books ->
-                    _results.value = books.filter { book ->
+                bookRepository.searchBooks(q).collect { rawBooks ->
+                    _results.value = rawBooks.visible().filter { book ->
                         book.tags.any { it.name == tag }
                     }
                 }

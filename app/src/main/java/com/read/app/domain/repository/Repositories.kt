@@ -34,4 +34,5 @@ interface FolderRepository {
     suspend fun insertFolder(folder: Folder): Long
     suspend fun deleteFolder(folder: Folder)
     suspend fun getFolderById(id: Long): Folder?
+    suspend fun setFolderPassword(id: Long, password: String?)
 }

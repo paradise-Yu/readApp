@@ -40,7 +40,13 @@ fun LibraryScreen(
     val scanMessage by viewModel.scanMessage.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val sortOrder by viewModel.sortOrder.collectAsState()
+    val folders by viewModel.visibleFolders.collectAsState()
+    val selectedFolderId by viewModel.selectedFolderId.collectAsState()
+    val inSecretMode by viewModel.inSecretMode.collectAsState()
     var showSortMenu by remember { mutableStateOf(false) }
+    var showFolderMenu by remember { mutableStateOf(false) }
+    var showSecretDialog by remember { mutableStateOf(false) }
+    var secretInput by remember { mutableStateOf("") }
 
     val folderPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -54,7 +60,16 @@ fun LibraryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("书架") },
+                title = {
+                    Text(
+                        when {
+                            inSecretMode -> "书架 · 隐身模式"
+                            selectedFolderId != null ->
+                                "书架 · ${folders.firstOrNull { it.id == selectedFolderId }?.name ?: ""}"
+                            else -> "书架"
+                        }
+                    )
+                },
                 actions = {
                     IconButton(onClick = onSearchClick) {
                         Icon(Icons.Default.Search, contentDescription = "搜索")
@@ -85,7 +100,60 @@ fun LibraryScreen(
                         )
                     }
                     IconButton(onClick = onFolderClick) {
-                        Icon(Icons.Default.Folder, contentDescription = "文件夹")
+                        Icon(Icons.Default.Folder, contentDescription = "文件夹管理")
+                    }
+                    // 文件夹切换：点击弹下拉，长按输入密码进入隐身模式
+                    Box {
+                        Icon(
+                            if (inSecretMode) Icons.Default.Lock else Icons.Default.FilterList,
+                            contentDescription = "文件夹切换",
+                            tint = if (inSecretMode) MaterialTheme.colorScheme.primary
+                                   else LocalContentColor.current,
+                            modifier = Modifier
+                                .combinedClickable(
+                                    onClick = { showFolderMenu = true },
+                                    onLongClick = {
+                                        secretInput = ""
+                                        showSecretDialog = true
+                                    }
+                                )
+                                .padding(12.dp)
+                        )
+                        DropdownMenu(expanded = showFolderMenu, onDismissRequest = { showFolderMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("全部书籍") },
+                                onClick = {
+                                    viewModel.selectFolder(null)
+                                    showFolderMenu = false
+                                },
+                                leadingIcon = {
+                                    if (selectedFolderId == null) Icon(Icons.Default.Check, contentDescription = null)
+                                }
+                            )
+                            folders.forEach { folder ->
+                                DropdownMenuItem(
+                                    text = { Text(folder.name) },
+                                    onClick = {
+                                        viewModel.selectFolder(folder.id)
+                                        showFolderMenu = false
+                                    },
+                                    leadingIcon = {
+                                        if (selectedFolderId == folder.id) Icon(Icons.Default.Check, contentDescription = null)
+                                    }
+                                )
+                            }
+                            if (inSecretMode) {
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("退出隐身模式") },
+                                    onClick = {
+                                        viewModel.exitSecretMode()
+                                        showFolderMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.LockOpen, contentDescription = null) }
+                                )
+                            }
+                        }
                     }
                     IconButton(onClick = { folderPickerLauncher.launch(null) }) {
                         Icon(Icons.Default.Add, contentDescription = "添加文件夹")
@@ -157,6 +225,34 @@ fun LibraryScreen(
             }
         }
         } // PullToRefreshBox
+    }
+
+    // 隐身模式密码输入框
+    if (showSecretDialog) {
+        AlertDialog(
+            onDismissRequest = { showSecretDialog = false },
+            title = { Text("输入访问密码") },
+            text = {
+                OutlinedTextField(
+                    value = secretInput,
+                    onValueChange = { secretInput = it },
+                    label = { Text("密码") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (secretInput.isNotEmpty()) viewModel.enterSecretMode(secretInput)
+                        showSecretDialog = false
+                    }
+                ) { Text("进入") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSecretDialog = false }) { Text("取消") }
+            }
+        )
     }
 }
 

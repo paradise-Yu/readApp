@@ -65,6 +65,10 @@ class LibraryViewModel @Inject constructor(
     // 密码以明文文件形式存放在各文件夹内，文件为唯一可信来源（手工删除文件即解除隐藏）
     private val _pwdMap = MutableStateFlow<Map<Long, String?>>(emptyMap())
 
+    // 按文件夹缓存书籍列表：folderId -> books，null 表示"全部书籍"
+    // 切换文件夹时直接读缓存，无需重新过滤全部书籍
+    private val _folderBooksCache = MutableStateFlow<Map<Long?, List<Book>>>(emptyMap())
+
     init {
         viewModelScope.launch {
             folderRepository.getAllFolders().collect { folders ->
@@ -73,6 +77,41 @@ class LibraryViewModel @Inject constructor(
                 }
             }
         }
+        // 监听书籍变化，重建各文件夹缓存
+        viewModelScope.launch {
+            bookRepository.getAllBooks().collect { allBooks ->
+                rebuildFolderBooksCache(allBooks)
+            }
+        }
+        // 文件夹变化时也重建缓存（新增/删除文件夹）
+        viewModelScope.launch {
+            folderRepository.getAllFolders().collect {
+                val allBooks = bookRepository.getAllBooks().first()
+                rebuildFolderBooksCache(allBooks)
+            }
+        }
+    }
+
+    private suspend fun rebuildFolderBooksCache(allBooks: List<Book>) {
+        val folders = folderRepository.getAllFolders().first()
+        val pwdMap = _pwdMap.value
+        val hiddenFolderIds = folders.filter { pwdMap[it.id] != null }.map { it.id }.toSet()
+        val allFolderIds = folders.map { it.id }.toSet()
+        
+        val newCache = mutableMapOf<Long?, List<Book>>()
+        
+        // "全部书籍"：排除隐藏文件夹和孤立书
+        newCache[null] = allBooks.filter { b ->
+            val isOrphaned = b.folderId != null && b.folderId !in allFolderIds
+            b.folderId == null || (b.folderId !in hiddenFolderIds && !isOrphaned)
+        }
+        
+        // 各文件夹缓存
+        folders.forEach { folder ->
+            newCache[folder.id] = allBooks.filter { it.folderId == folder.id }
+        }
+        
+        _folderBooksCache.value = newCache
     }
 
     // 当前模式下可见的文件夹：普通模式只显示未设密码的；隐身模式只显示绑定当前密码的
@@ -85,41 +124,15 @@ class LibraryViewModel @Inject constructor(
         else folders.filter { pwdMap[it.id] == pwd }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // 筛选状态：文件夹 / 标签 / 隐身密码（combine 最多 5 路，先合并）
-    private val filterState = combine(
-        _selectedFolderId,
-        _selectedTagName,
-        session.secretPassword
-    ) { folderId, tagName, pwd -> Triple(folderId, tagName, pwd) }
-
-    // 书架缓存：避免每次 combine 都重新查询和排序
-    private val _booksCache = MutableStateFlow<List<Book>>(emptyList())
-
+    // 书架书籍：从按文件夹缓存中读取，切换文件夹时秒开
     val books: StateFlow<List<Book>> = combine(
-        bookRepository.getAllBooks(),
+        _folderBooksCache,
+        _selectedFolderId,
         _sortOrder,
-        filterState,
-        folderRepository.getAllFolders(),
-        _pwdMap
-    ) { all, order, filter, folders, pwdMap ->
-        val (folderId, tagName, pwd) = filter
-        val allFolderIds = folders.map { it.id }.toSet()
-        val hiddenFolderIds = folders.filter { pwdMap[it.id] != null }.map { it.id }.toSet()
-        val filtered = if (pwd != null) {
-            // 隐身模式：只显示绑定该密码的文件夹下的书
-            val ids = folders.filter { pwdMap[it.id] == pwd }.map { it.id }.toSet()
-            all.filter { it.folderId in ids }
-        } else {
-            // 普通模式：隐藏已设密码文件夹的书 + 孤立书（folderId 不存在），并按选中文件夹筛选
-            all.filter { b ->
-                val isOrphaned = b.folderId != null && b.folderId !in allFolderIds
-                (b.folderId == null || (b.folderId !in hiddenFolderIds && !isOrphaned)) &&
-                    (folderId == null || b.folderId == folderId)
-            }
-        }.let { list ->
-            // 标签筛选
-            if (tagName == null) list else list.filter { b -> b.tags.any { it.name == tagName } }
-        }
+        _selectedTagName
+    ) { cache, folderId, order, tagName ->
+        val books = cache[folderId] ?: emptyList()
+        val filtered = if (tagName == null) books else books.filter { b -> b.tags.any { it.name == tagName } }
         when (order) {
             SortOrder.RECENT -> filtered.sortedByDescending { it.lastReadTime ?: 0L }
             SortOrder.TITLE -> filtered.sortedBy { it.title }

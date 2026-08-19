@@ -46,6 +46,9 @@ class ReaderViewModel @Inject constructor(
                 "|[Pp]art\\s+[0-9]+" +
             ")"
         )
+
+        // 章节目录内存缓存：一本书进入目录后不再重复解析（进程内有效）
+        private val chapterCache = mutableMapOf<Long, List<Chapter>>()
     }
 
     private val _book = MutableStateFlow<Book?>(null)
@@ -104,7 +107,10 @@ class ReaderViewModel @Inject constructor(
                         } catch (_: Exception) { "" }
                     }
                     _content.value = text
-                    _chapters.value = withContext(Dispatchers.IO) { buildChapters(text) }
+                    // 章节目录缓存：首次解析后存入内存，后续打开直接读取
+                    _chapters.value = chapterCache.getOrPut(bookId) {
+                        withContext(Dispatchers.IO) { buildChapters(text) }
+                    }
                 }
                 // 订阅本书书签（切换书籍时先取消旧订阅）
                 bookmarkJob?.cancel()

@@ -371,11 +371,26 @@ private fun BookListItem(book: Book, onClick: () -> Unit, onLongClick: () -> Uni
                 if (book.author != null) {
                     Text(book.author, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text(book.format.uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(book.format.uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    if (book.fileSize > 0) {
+                        Text(formatFileSize(book.fileSize), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    }
+                }
             }
             if (book.rating != null) {
                 RatingBar(rating = book.rating ?: 0, starSize = 14.dp)
             }
         }
+    }
+}
+
+// 文件大小格式化：字节 → KB/MB/GB
+private fun formatFileSize(bytes: Long): String {
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        bytes < 1024 * 1024 * 1024 -> "${bytes / 1024 / 1024} MB"
+        else -> "${bytes / 1024 / 1024 / 1024} GB"
     }
 }

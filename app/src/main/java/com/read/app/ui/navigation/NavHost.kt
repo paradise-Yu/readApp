@@ -1,6 +1,7 @@
 package com.read.app.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -32,6 +33,20 @@ object Routes {
 @Composable
 fun ReadNavHost() {
     val navController = rememberNavController()
+
+    // 监听外部打开文件事件：自动导航到阅读器
+    LaunchedEffect(Unit) {
+        NavEvents.pendingBook.collect { pending ->
+            if (pending != null) {
+                when (pending.format.lowercase()) {
+                    "txt" -> navController.navigate(Routes.txtReader(pending.bookId))
+                    "pdf" -> navController.navigate(Routes.pdfReader(pending.bookId))
+                    "epub" -> navController.navigate(Routes.epubReader(pending.bookId))
+                }
+                NavEvents.clearPendingBook()
+            }
+        }
+    }
 
     NavHost(navController = navController, startDestination = Routes.LIBRARY) {
         composable(Routes.LIBRARY) {

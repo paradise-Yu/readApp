@@ -124,7 +124,6 @@ private fun FolderItem(
     )) {
         ListItem(
             headlineContent = { Text(folder.name) },
-            supportingContent = { Text(folder.path, maxLines = 1) },
             leadingContent = {
                 Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             },

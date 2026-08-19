@@ -92,6 +92,9 @@ class LibraryViewModel @Inject constructor(
         session.secretPassword
     ) { folderId, tagName, pwd -> Triple(folderId, tagName, pwd) }
 
+    // 书架缓存：避免每次 combine 都重新查询和排序
+    private val _booksCache = MutableStateFlow<List<Book>>(emptyList())
+
     val books: StateFlow<List<Book>> = combine(
         bookRepository.getAllBooks(),
         _sortOrder,
@@ -100,15 +103,17 @@ class LibraryViewModel @Inject constructor(
         _pwdMap
     ) { all, order, filter, folders, pwdMap ->
         val (folderId, tagName, pwd) = filter
+        val allFolderIds = folders.map { it.id }.toSet()
         val hiddenFolderIds = folders.filter { pwdMap[it.id] != null }.map { it.id }.toSet()
         val filtered = if (pwd != null) {
             // 隐身模式：只显示绑定该密码的文件夹下的书
             val ids = folders.filter { pwdMap[it.id] == pwd }.map { it.id }.toSet()
             all.filter { it.folderId in ids }
         } else {
-            // 普通模式：隐藏已设密码文件夹的书，并按选中文件夹筛选
+            // 普通模式：隐藏已设密码文件夹的书 + 孤立书（folderId 不存在），并按选中文件夹筛选
             all.filter { b ->
-                (b.folderId == null || b.folderId !in hiddenFolderIds) &&
+                val isOrphaned = b.folderId != null && b.folderId !in allFolderIds
+                (b.folderId == null || (b.folderId !in hiddenFolderIds && !isOrphaned)) &&
                     (folderId == null || b.folderId == folderId)
             }
         }.let { list ->

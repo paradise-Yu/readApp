@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -21,8 +22,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -186,13 +189,21 @@ fun TxtReaderScreen(
                                 tint = theme.text.copy(alpha = 0.55f)
                             )
                         }
-                        Text(
-                            text = paragraphs[index],
-                            fontSize = fontSize.sp,
-                            lineHeight = (fontSize * 1.9).sp,
-                            color = theme.text,
-                            fontFamily = FontFamily.Serif,
-                            modifier = Modifier.padding(bottom = (fontSize * 0.8).dp)
+                        // BasicTextField 只读模式：支持长按选中文字 + 系统复制弹窗
+                        BasicTextField(
+                            value = paragraphs[index],
+                            onValueChange = {},
+                            readOnly = true,
+                            textStyle = TextStyle(
+                                fontSize = fontSize.sp,
+                                lineHeight = (fontSize * 1.9).sp,
+                                color = theme.text,
+                                fontFamily = FontFamily.Serif
+                            ),
+                            cursorBrush = SolidColor(theme.text),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = (fontSize * 0.8).dp)
                         )
                     }
                 }

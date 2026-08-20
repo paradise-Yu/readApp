@@ -72,7 +72,7 @@ fun LibraryScreen(
                         when {
                             inSecretMode -> "书架 · 隐身模式"
                             selectedFolderId != null ->
-                                "书架 · ${folders.firstOrNull { it.id == selectedFolderId }?.name ?: ""}"
+                                "书架 · ${folders.firstOrNull { it.id == selectedFolderId }?.displayName ?: ""}"
                             else -> "书架"
                         }
                     )
@@ -145,7 +145,7 @@ fun LibraryScreen(
                             )
                             folders.forEach { folder ->
                                 DropdownMenuItem(
-                                    text = { Text(folder.name) },
+                                    text = { Text(folder.displayName) },
                                     onClick = {
                                         viewModel.selectFolder(folder.id)
                                         showFolderMenu = false

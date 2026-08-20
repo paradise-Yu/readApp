@@ -28,7 +28,15 @@ data class Folder(
     val name: String,
     val addedTime: Long = System.currentTimeMillis(),
     val password: String? = null
-)
+) {
+    // 显示名称：兼容旧数据（name 可能是全路径），始终只取最后一级
+    val displayName: String
+        get() {
+            if (name.contains('/')) return name.substringAfterLast('/')
+            if (name.contains(':')) return name.substringAfterLast(':')
+            return name
+        }
+}
 
 data class Bookmark(
     val id: Long = 0,

@@ -123,7 +123,7 @@ private fun FolderItem(
         }
     )) {
         ListItem(
-            headlineContent = { Text(folder.name) },
+            headlineContent = { Text(folder.displayName) },
             leadingContent = {
                 Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             },
@@ -139,7 +139,7 @@ private fun FolderItem(
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("删除文件夹") },
-            text = { Text("确定要删除文件夹 \"${folder.name}\" 吗？\n(不会删除文件，仅从应用中移除)") },
+            text = { Text("确定要删除文件夹 \"${folder.displayName}\" 吗？\n(不会删除文件，仅从应用中移除)") },
             confirmButton = {
                 TextButton(onClick = {
                     onDelete()

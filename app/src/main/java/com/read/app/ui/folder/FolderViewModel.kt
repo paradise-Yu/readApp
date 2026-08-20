@@ -10,16 +10,11 @@ import com.read.app.domain.repository.FolderRepository
 import com.read.app.domain.session.ReaderSession
 import com.read.app.util.BookImporter
 import com.read.app.util.FileUtil
+import com.read.app.util.FolderContentCache
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -32,18 +27,28 @@ class FolderViewModel @Inject constructor(
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    // 密码以明文文件形式存放在各文件夹内，文件为唯一可信来源（手工删除文件即解除隐藏）
-    private val _pwdMap = MutableStateFlow<Map<Long, String?>>(emptyMap())
-    val folderPasswords: StateFlow<Map<Long, String?>> = _pwdMap.asStateFlow()
+    // 密码从共享缓存读取（与 LibraryViewModel 保持一致）
+    val folderPasswords: StateFlow<Map<Long, String?>> = FolderContentCache.pwdMap
 
     init {
-        // 文件夹变化时重新读取密码文件（含用户手工删除文件的情形）
+        // 初始化缓存：读取密码 + 构建文件夹书籍映射
+        viewModelScope.launch {
+            val folders = folderRepository.getAllFolders().first()
+            val allBooks = bookRepository.getAllBooks().first()
+            FolderContentCache.init(context, folders, allBooks)
+        }
+        // 书籍变化时重建缓存
+        viewModelScope.launch {
+            bookRepository.getAllBooks().collect { allBooks ->
+                val folders = folderRepository.getAllFolders().first()
+                FolderContentCache.rebuild(context, folders, allBooks)
+            }
+        }
+        // 文件夹变化时重建缓存（新增/删除文件夹）
         viewModelScope.launch {
             folderRepository.getAllFolders().collect { folders ->
-                val map = withContext(Dispatchers.IO) {
-                    folders.associate { it.id to FileUtil.readFolderPassword(context, it.path) }
-                }
-                _pwdMap.value = map
+                val allBooks = bookRepository.getAllBooks().first()
+                FolderContentCache.rebuild(context, folders, allBooks)
             }
         }
     }
@@ -52,7 +57,7 @@ class FolderViewModel @Inject constructor(
     val folders: StateFlow<List<Folder>> = combine(
         folderRepository.getAllFolders(),
         session.secretPassword,
-        _pwdMap
+        FolderContentCache.pwdMap
     ) { all, pwd, pwdMap ->
         if (pwd == null) all.filter { pwdMap[it.id] == null }
         else all.filter { pwdMap[it.id] == pwd }
@@ -79,6 +84,7 @@ class FolderViewModel @Inject constructor(
 
     fun deleteFolder(folder: Folder) {
         viewModelScope.launch {
+            FolderContentCache.removeFolder(folder.id)
             folderRepository.deleteFolder(folder)
         }
     }
@@ -90,7 +96,11 @@ class FolderViewModel @Inject constructor(
                 FileUtil.writeFolderPassword(context, folder.path, password.ifBlank { null })
             }
             if (ok) {
-                _pwdMap.value = _pwdMap.value + (folder.id to password.ifBlank { null })
+                FolderContentCache.updatePassword(folder.id, password.ifBlank { null })
+                // 密码变化后重建书籍缓存（"全部书籍"过滤会受影响）
+                val folders = folderRepository.getAllFolders().first()
+                val allBooks = bookRepository.getAllBooks().first()
+                FolderContentCache.rebuild(context, folders, allBooks)
             }
         }
     }

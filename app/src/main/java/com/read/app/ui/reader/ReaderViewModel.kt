@@ -122,6 +122,43 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    // 在当前阅读位置插入章节目录标记，重建目录并持久化
+    fun insertChapter(paragraphIndex: Int, title: String) {
+        val book = _book.value ?: return
+        val currentText = _content.value
+        val paragraphs = currentText.split(Regex("\\n\\s*\\n")).filter { it.isNotBlank() }
+        if (paragraphIndex < 0 || paragraphIndex >= paragraphs.size) return
+
+        viewModelScope.launch {
+            // 格式化章节标记：与自动识别的格式一致，确保正则能匹配
+            val marker = "第${paragraphIndex + 1}章 $title"
+            val newParagraphs = paragraphs.toMutableList()
+            newParagraphs[paragraphIndex] = "$marker\n${newParagraphs[paragraphIndex]}"
+            val newText = newParagraphs.joinToString("\n\n")
+
+            _content.value = newText
+            _chapters.value = withContext(Dispatchers.IO) { buildChapters(newText) }
+
+            // 写回原文件，保证下次打开时目录仍在
+            withContext(Dispatchers.IO) {
+                try {
+                    val path = book.filePath
+                    if (FileUtil.isUriPath(path)) {
+                        val treeUri = android.net.Uri.parse(path)
+                        val doc = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, treeUri)
+                        doc?.uri?.let { treeDoc ->
+                            context.contentResolver.openOutputStream(treeDoc, "wt")?.use {
+                                it.write(newText.toByteArray(Charsets.UTF_8))
+                            }
+                        }
+                    } else {
+                        java.io.File(path).writeText(newText, Charsets.UTF_8)
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
     // 按空行分段（与 UI 渲染规则保持一致），再用正则提取章节目录
     private fun buildChapters(text: String): List<Chapter> {
         val paragraphs = text.split(Regex("\\n\\s*\\n")).filter { it.isNotBlank() }

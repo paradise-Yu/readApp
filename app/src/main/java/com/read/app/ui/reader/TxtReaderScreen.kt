@@ -65,6 +65,8 @@ fun TxtReaderScreen(
     val chapters by viewModel.chapters.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
     var showSettings by remember { mutableStateOf(false) }
+    // 插入目录弹窗
+    var showInsertChapterDialog by remember { mutableStateOf(false) }
     // 目录/书签面板：null=关闭，0=目录页，1=书签页
     var sheetTab by remember { mutableIntStateOf(-1) }
 
@@ -266,6 +268,18 @@ fun TxtReaderScreen(
                         fontSize = 11.sp,
                         color = theme.text.copy(alpha = 0.6f)
                     )
+                    // 在当前阅读位置插入目录章节
+                    IconButton(
+                        onClick = { showInsertChapterDialog = true },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.BookmarkAdd,
+                            contentDescription = "插入目录",
+                            modifier = Modifier.size(16.dp),
+                            tint = theme.text.copy(alpha = 0.6f)
+                        )
+                    }
                     if (readMode == ReadMode.PAGE) {
                         Text(
                             text = "翻页模式",
@@ -295,6 +309,46 @@ fun TxtReaderScreen(
             },
             onDeleteBookmark = { viewModel.removeBookmark(it) },
             onDismiss = { sheetTab = -1 }
+        )
+    }
+
+    // 插入目录弹窗
+    if (showInsertChapterDialog) {
+        var chapterTitle by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showInsertChapterDialog = false },
+            title = { Text("插入目录") },
+            text = {
+                Column {
+                    Text(
+                        "将在当前阅读位置（第 ${currentIndex + 1} 段）插入目录章节标记",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = chapterTitle,
+                        onValueChange = { chapterTitle = it },
+                        label = { Text("章节标题") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (chapterTitle.isNotBlank()) {
+                            viewModel.insertChapter(currentIndex, chapterTitle.trim())
+                            showInsertChapterDialog = false
+                        }
+                    },
+                    enabled = chapterTitle.isNotBlank()
+                ) { Text("插入") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showInsertChapterDialog = false }) { Text("取消") }
+            }
         )
     }
 

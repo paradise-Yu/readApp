@@ -92,7 +92,7 @@ class LibraryViewModel @Inject constructor(
         session.secretPassword,
         FolderContentCache.pwdMap
     ) { folders, pwd, pwdMap ->
-        if (pwd == null) folders.filter { pwdMap[it.id] == null }
+        if (pwd == null) folders.filter { pwdMap[it.id] == FolderContentCache.UNENCRYPTED }
         else folders.filter { pwdMap[it.id] == pwd }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

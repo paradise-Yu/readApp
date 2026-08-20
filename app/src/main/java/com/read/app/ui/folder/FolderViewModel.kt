@@ -59,7 +59,7 @@ class FolderViewModel @Inject constructor(
         session.secretPassword,
         FolderContentCache.pwdMap
     ) { all, pwd, pwdMap ->
-        if (pwd == null) all.filter { pwdMap[it.id] == null }
+        if (pwd == null) all.filter { pwdMap[it.id] == FolderContentCache.UNENCRYPTED }
         else all.filter { pwdMap[it.id] == pwd }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

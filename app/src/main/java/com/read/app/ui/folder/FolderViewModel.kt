@@ -69,11 +69,12 @@ class FolderViewModel @Inject constructor(
 
     fun addFolder(uri: Uri, name: String) {
         viewModelScope.launch {
-            // 持久化 URI 权限，保证重启后仍可读取
+            // 持久化 URI 权限（读+写），保证重启后仍可读取/写入
             try {
                 context.contentResolver.takePersistableUriPermission(
                     uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
             } catch (_: Exception) {}
 
@@ -86,6 +87,16 @@ class FolderViewModel @Inject constructor(
         viewModelScope.launch {
             FolderContentCache.removeFolder(folder.id)
             folderRepository.deleteFolder(folder)
+        }
+    }
+
+    // 重命名书架：只改数据库里的显示名，不动磁盘目录（SAF 无权改系统目录名）
+    fun renameFolder(folder: Folder, newName: String) {
+        val name = newName.trim()
+        if (name.isEmpty() || name == folder.name) return
+        viewModelScope.launch {
+            // 文件夹变化由 init 中的 collector 监听，缓存会自动重建
+            folderRepository.updateFolder(folder.copy(name = name))
         }
     }
 

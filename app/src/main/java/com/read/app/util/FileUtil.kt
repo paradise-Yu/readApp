@@ -117,6 +117,64 @@ object FileUtil {
         } catch (_: Exception) { false }
     }
 
+    // ---------- 文件迁移（长按书籍移动到其它书架） ----------
+
+    // 根据扩展名返回 MIME 类型（SAF createFile 需要）
+    private fun mimeOf(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
+        "txt" -> "text/plain"
+        "pdf" -> "application/pdf"
+        "epub" -> "application/epub+zip"
+        else -> "application/octet-stream"
+    }
+
+    // 把书籍文件移动到目标文件夹（支持 SAF/本地路径任意组合）
+    // 成功返回新路径（content:// 或本地路径），失败返回 null；采用复制+删除，复制失败不动原文件
+    fun moveBookFile(context: Context, srcPath: String, dstFolderPath: String): String? {
+        var input: InputStream? = null
+        return try {
+            val srcName = if (isUriPath(srcPath)) {
+                DocumentFile.fromSingleUri(context, Uri.parse(srcPath))?.name ?: return null
+            } else {
+                File(srcPath).name
+            }
+            input = openInputStream(context, srcPath) ?: return null
+
+            // 1. 复制到目标文件夹，得到新路径
+            val newPath: String? = if (isUriPath(dstFolderPath)) {
+                val targetDir = DocumentFile.fromTreeUri(context, Uri.parse(dstFolderPath))
+                // 目标已存在同名文件则先删除，避免 SAF 自动加 "(1)" 后缀
+                targetDir?.findFile(srcName)?.delete()
+                val newDoc = targetDir?.createFile(mimeOf(srcName), srcName)
+                if (newDoc == null) {
+                    input.close()
+                    null
+                } else {
+                    context.contentResolver.openOutputStream(newDoc.uri)?.use { out ->
+                        input.use { it.copyTo(out) }
+                    } ?: input.close()
+                    newDoc.uri.toString()
+                }
+            } else {
+                val target = File(dstFolderPath, srcName)
+                if (target.exists()) target.delete()
+                input.use { inp -> target.outputStream().use { out -> inp.copyTo(out) } }
+                target.absolutePath
+            }
+            if (newPath == null) return null
+
+            // 2. 删除源文件
+            val deleted = if (isUriPath(srcPath)) {
+                DocumentFile.fromSingleUri(context, Uri.parse(srcPath))?.delete() == true
+            } else {
+                File(srcPath).delete()
+            }
+            if (deleted) newPath else null
+        } catch (_: Exception) {
+            null
+        } finally {
+            try { input?.close() } catch (_: Exception) {}
+        }
+    }
     // ---------- 读取 ----------
 
     fun openInputStream(context: Context, path: String): InputStream? = try {

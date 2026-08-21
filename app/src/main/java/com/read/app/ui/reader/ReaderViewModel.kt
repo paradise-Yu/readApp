@@ -137,20 +137,19 @@ class ReaderViewModel @Inject constructor(
             val newText = newParagraphs.joinToString("\n\n")
 
             _content.value = newText
-            _chapters.value = withContext(Dispatchers.IO) { buildChapters(newText) }
+            // 重建目录并同步更新内存缓存（否则下次打开 getOrPut 会返回旧目录）
+            val newChapters = withContext(Dispatchers.IO) { buildChapters(newText) }
+            _chapters.value = newChapters
+            chapterCache[book.id] = newChapters
 
-            // 写回原文件，保证下次打开时目录仍在
+            // 写回原文件：书籍 filePath 是 SAF 文档 URI，直接 openOutputStream 写入
             withContext(Dispatchers.IO) {
                 try {
                     val path = book.filePath
                     if (FileUtil.isUriPath(path)) {
-                        val treeUri = android.net.Uri.parse(path)
-                        val doc = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, treeUri)
-                        doc?.uri?.let { treeDoc ->
-                            context.contentResolver.openOutputStream(treeDoc, "wt")?.use {
-                                it.write(newText.toByteArray(Charsets.UTF_8))
-                            }
-                        }
+                        context.contentResolver.openOutputStream(
+                            android.net.Uri.parse(path), "wt"
+                        )?.use { it.write(newText.toByteArray(Charsets.UTF_8)) }
                     } else {
                         java.io.File(path).writeText(newText, Charsets.UTF_8)
                     }

@@ -20,6 +20,9 @@ class FolderRepositoryImpl @Inject constructor(
     override suspend fun insertFolder(folder: Folder): Long =
         folderDao.insertFolder(folder.toEntity())
 
+    override suspend fun updateFolder(folder: Folder) =
+        folderDao.updateFolder(folder.toEntity())
+
     override suspend fun deleteFolder(folder: Folder) =
         folderDao.deleteFolder(folder.toEntity())
 

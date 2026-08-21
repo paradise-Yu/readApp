@@ -12,11 +12,14 @@ import com.read.app.domain.repository.FolderRepository
 import com.read.app.domain.repository.TagRepository
 import com.read.app.domain.session.ReaderSession
 import com.read.app.util.BookImporter
+import com.read.app.util.FileUtil
 import com.read.app.util.FolderContentCache
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 enum class SortOrder(val label: String) {
@@ -64,6 +67,18 @@ class LibraryViewModel @Inject constructor(
     // 切换文件夹时直接读缓存，无需重新过滤全部书籍
 
     init {
+        // 升级历史文件夹的持久化权限：旧版本只持久化了读，补上写（插入目录写回/书籍迁移需要）
+        try {
+            context.contentResolver.persistedUriPermissions.forEach { p ->
+                if (!p.isWritePermission) {
+                    context.contentResolver.takePersistableUriPermission(
+                        p.uri,
+                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                }
+            }
+        } catch (_: Exception) {}
         // 初始化缓存：读取密码 + 构建文件夹书籍映射
         viewModelScope.launch {
             val folders = folderRepository.getAllFolders().first()
@@ -177,11 +192,12 @@ class LibraryViewModel @Inject constructor(
 
     fun scanFolder(uri: Uri, path: String, name: String) {
         viewModelScope.launch {
-            // Persist URI permission
+            // Persist URI permission（读+写：写用于插入目录写回、书籍迁移）
             try {
                 context.contentResolver.takePersistableUriPermission(
                     uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
             } catch (_: Exception) {}
 
@@ -204,6 +220,23 @@ class LibraryViewModel @Inject constructor(
     fun deleteBook(book: Book) {
         viewModelScope.launch {
             bookRepository.deleteBook(book)
+        }
+    }
+
+    // 迁移书籍到目标书架：物理移动文件 + 更新数据库（缓存由 init 中的 collector 自动重建）
+    fun moveBookToFolder(book: Book, folder: Folder) {
+        if (book.folderId == folder.id) return
+        viewModelScope.launch {
+            _scanMessage.value = "正在移动「${book.title}」..."
+            val newPath = withContext(Dispatchers.IO) {
+                FileUtil.moveBookFile(context, book.filePath, folder.path)
+            }
+            if (newPath != null) {
+                bookRepository.updateBook(book.copy(filePath = newPath, folderId = folder.id))
+                _scanMessage.value = "已移动「${book.title}」到 ${folder.displayName}"
+            } else {
+                _scanMessage.value = "移动失败，请检查文件夹写入权限"
+            }
         }
     }
 }

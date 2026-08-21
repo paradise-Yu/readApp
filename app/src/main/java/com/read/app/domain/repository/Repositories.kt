@@ -33,6 +33,7 @@ interface TagRepository {
 interface FolderRepository {
     fun getAllFolders(): Flow<List<Folder>>
     suspend fun insertFolder(folder: Folder): Long
+    suspend fun updateFolder(folder: Folder)
     suspend fun deleteFolder(folder: Folder)
     suspend fun getFolderById(id: Long): Folder?
     suspend fun setFolderPassword(id: Long, password: String?)

@@ -95,6 +95,7 @@ fun FolderScreen(
                         folder = folder,
                         currentPassword = folderPasswords[folder.id],
                         onDelete = { viewModel.deleteFolder(folder) },
+                        onRename = { name -> viewModel.renameFolder(folder, name) },
                         onSetPassword = { pwd -> viewModel.setFolderPassword(folder, pwd) }
                     )
                 }
@@ -109,11 +110,14 @@ private fun FolderItem(
     folder: Folder,
     currentPassword: String?,
     onDelete: () -> Unit,
+    onRename: (String) -> Unit,
     onSetPassword: (String) -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
     var passwordInput by remember(folder.id) { mutableStateOf("") }
+    var renameInput by remember(folder.id) { mutableStateOf("") }
 
     Box(modifier = Modifier.combinedClickable(
         onClick = {},
@@ -128,8 +132,17 @@ private fun FolderItem(
                 Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             },
             trailingContent = {
-                IconButton(onClick = { showDeleteDialog = true }) {
-                    Icon(Icons.Default.Delete, contentDescription = "删除")
+                Row {
+                    // 重命名书架显示名（只改数据库，不动磁盘目录）
+                    IconButton(onClick = {
+                        renameInput = folder.displayName
+                        showRenameDialog = true
+                    }) {
+                        Icon(Icons.Default.Edit, contentDescription = "重命名")
+                    }
+                    IconButton(onClick = { showDeleteDialog = true }) {
+                        Icon(Icons.Default.Delete, contentDescription = "删除")
+                    }
                 }
             }
         )
@@ -148,6 +161,40 @@ private fun FolderItem(
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) { Text("取消") }
+            }
+        )
+    }
+
+    // 重命名书架：只修改应用内显示名，磁盘目录名不变
+    if (showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("重命名书架") },
+            text = {
+                Column {
+                    Text(
+                        "只修改应用内的书架显示名，磁盘上的目录名不会改变。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = renameInput,
+                        onValueChange = { renameInput = it },
+                        label = { Text("书架名称") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onRename(renameInput)
+                    showRenameDialog = false
+                }) { Text("确定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) { Text("取消") }
             }
         )
     }

@@ -54,6 +54,8 @@ fun LibraryScreen(
     var showFolderMenu by remember { mutableStateOf(false) }
     var showSecretDialog by remember { mutableStateOf(false) }
     var secretInput by remember { mutableStateOf("") }
+    // 长按书籍弹出的操作菜单（查看详情 / 移动到书架）
+    var menuBook by remember { mutableStateOf<Book?>(null) }
 
     val folderPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -248,7 +250,7 @@ fun LibraryScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(books, key = { it.id }) { book ->
-                    BookGridItem(book = book, onClick = { onBookClick(book) }, onLongClick = { onBookLongClick(book) })
+                    BookGridItem(book = book, onClick = { onBookClick(book) }, onLongClick = { menuBook = book })
                 }
             }
         } else {
@@ -258,13 +260,63 @@ fun LibraryScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 items(books, key = { it.id }) { book ->
-                    BookListItem(book = book, onClick = { onBookClick(book) }, onLongClick = { onBookLongClick(book) })
+                    BookListItem(book = book, onClick = { onBookClick(book) }, onLongClick = { menuBook = book })
                 }
             }
         }
         } // 内容 Box
         } // 标签列 Column
         } // PullToRefreshBox
+    }
+
+    // 长按书籍操作菜单：查看详情 / 移动到其它书架（物理移动文件 + 更新数据库）
+    menuBook?.let { book ->
+        val moveTargets = folders.filter { it.id != book.folderId }
+        AlertDialog(
+            onDismissRequest = { menuBook = null },
+            title = { Text(book.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            text = {
+                Column {
+                    TextButton(onClick = {
+                        menuBook = null
+                        onBookLongClick(book)
+                    }) {
+                        Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("查看详情")
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Text(
+                        "移动到书架",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (moveTargets.isEmpty()) {
+                        Text(
+                            "没有其它书架可移动",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    } else {
+                        moveTargets.forEach { folder ->
+                            TextButton(onClick = {
+                                viewModel.moveBookToFolder(book, folder)
+                                menuBook = null
+                            }) {
+                                Icon(Icons.Default.DriveFileMove, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(folder.displayName)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { menuBook = null }) { Text("取消") }
+            }
+        )
     }
 
     // 隐身模式密码输入框

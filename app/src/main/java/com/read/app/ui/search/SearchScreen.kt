@@ -28,6 +28,8 @@ fun SearchScreen(
     val allTags by viewModel.allTags.collectAsState()
     val selectedTag by viewModel.selectedTag.collectAsState()
     val fullTextResults by viewModel.fullTextResults.collectAsState()
+    val folders by viewModel.folders.collectAsState()
+    val selectedFolderId by viewModel.selectedFolderId.collectAsState()
 
     Scaffold(
         topBar = {
@@ -56,6 +58,35 @@ fun SearchScreen(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(8.dp)
         ) {
+            // 文件夹筛选 chips
+            if (folders.isNotEmpty()) {
+                item {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    ) {
+                        item {
+                            FilterChip(
+                                selected = selectedFolderId == null,
+                                onClick = { viewModel.setSelectedFolder(null) },
+                                label = { Text("全部文件夹") }
+                            )
+                        }
+                        items(folders) { folder ->
+                            FilterChip(
+                                selected = selectedFolderId == folder.id,
+                                onClick = {
+                                    viewModel.setSelectedFolder(
+                                        if (selectedFolderId == folder.id) null else folder.id
+                                    )
+                                },
+                                label = { Text(folder.displayName) }
+                            )
+                        }
+                    }
+                }
+            }
+
             // Tag filter chips
             if (allTags.isNotEmpty()) {
                 item {

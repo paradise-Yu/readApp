@@ -16,7 +16,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -60,27 +59,36 @@ class SearchViewModel @Inject constructor(
     private val _fullTextResults = MutableStateFlow<Map<Long, List<String>>>(emptyMap())
     val fullTextResults: StateFlow<Map<Long, List<String>>> = _fullTextResults.asStateFlow()
 
+    // 搜索进行中（显示进度条）
+    private val _isSearching = MutableStateFlow(false)
+    val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
+
+    // 是否已执行过搜索（用于空结果提示）
+    private val _hasSearched = MutableStateFlow(false)
+    val hasSearched: StateFlow<Boolean> = _hasSearched.asStateFlow()
+
     private var searchJob: Job? = null
 
+    // 只记录输入，不触发搜索：搜索改为手动触发，避免每次按键都扫描全部文件导致卡顿
     fun setQuery(newQuery: String) {
         _query.value = newQuery
-        performSearch()
     }
 
     fun setSelectedTag(tagName: String?) {
         _selectedTag.value = tagName
-        performSearch()
+        // 已有搜索结果时，切换筛选条件立即重搜
+        if (_hasSearched.value) searchByName()
     }
 
     fun setSelectedFolder(folderId: Long?) {
         _selectedFolderId.value = folderId
-        performSearch()
+        if (_hasSearched.value) searchByName()
     }
 
-    private fun performSearch() {
+    // 文件名搜索：按书名/作者匹配，由搜索按钮、键盘搜索键、输入框失焦触发
+    fun searchByName() {
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
-            delay(300) // debounce
             val q = _query.value.trim()
             val tag = _selectedTag.value
             val folderId = _selectedFolderId.value
@@ -88,64 +96,78 @@ class SearchViewModel @Inject constructor(
             if (q.isBlank() && tag == null && folderId == null) {
                 _results.value = emptyList()
                 _fullTextResults.value = emptyMap()
+                _hasSearched.value = false
                 return@launch
             }
-
-            // 可见性过滤：密码文件夹的书不出现在搜索结果里（隐身模式下当前密码绑定的除外）
-            // 密码从共享缓存读取，与书架保持一致
-            val pwdMap = FolderContentCache.pwdMap.value
-            val secret = session.secretPassword.value
-            val hiddenFolderIds = pwdMap
-                .filter { (_, pwd) ->
-                    pwd != FolderContentCache.UNENCRYPTED && pwd != secret
-                }.keys
-            fun List<Book>.visible() = filter { b ->
-                (b.folderId == null || b.folderId !in hiddenFolderIds) &&
-                    (folderId == null || b.folderId == folderId)
-            }
-
-            // 仅标签筛选
-            if (tag != null && q.isBlank()) {
-                bookRepository.searchBooksByTag(tag).collect {
-                    _results.value = it.visible()
+            _hasSearched.value = true
+            _isSearching.value = true
+            try {
+                _fullTextResults.value = emptyMap()
+                val visible = visibleFilter(folderId)
+                val books = when {
+                    q.isNotBlank() -> bookRepository.searchBooks(q).first()
+                    tag != null -> bookRepository.searchBooksByTag(tag).first()
+                    else -> bookRepository.getAllBooks().first()
                 }
-                return@launch
+                val filtered = books.filter(visible)
+                _results.value = if (tag != null && q.isNotBlank()) {
+                    filtered.filter { b -> b.tags.any { t -> t.name == tag } }
+                } else filtered
+            } finally {
+                _isSearching.value = false
             }
+        }
+    }
 
-            if (q.isNotBlank()) {
-                // 1. 书名/作者匹配
-                val titleMatches = bookRepository.searchBooks(q).first().visible()
-                    .let { books ->
-                        if (tag != null) books.filter { b -> b.tags.any { it.name == tag } }
-                        else books
-                    }
-
-                // 2. 书内全文搜索（TXT）：独立于书名匹配，正文含关键词的书也会命中
-                val fullTextMatches = mutableMapOf<Long, List<String>>()
-                val txtBooks = bookRepository.getAllBooks().first().visible()
+    // 内容搜索（TXT 全文）：由"搜内容"按钮手动触发，逐本扫描并渐进更新结果
+    fun searchContent() {
+        val q = _query.value.trim()
+        if (q.isBlank()) return
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            _hasSearched.value = true
+            _isSearching.value = true
+            try {
+                val tag = _selectedTag.value
+                val visible = visibleFilter(_selectedFolderId.value)
+                val txtBooks = bookRepository.getAllBooks().first()
+                    .filter(visible)
                     .filter { it.format.lowercase() == "txt" }
+                    .let { if (tag != null) it.filter { b -> b.tags.any { t -> t.name == tag } } else it }
+
+                val matches = mutableMapOf<Long, List<String>>()
                 txtBooks.forEach { book ->
-                    val matches = withContext(Dispatchers.IO) {
+                    val lines = withContext(Dispatchers.IO) {
                         try {
-                            val content = FileUtil.readTextAutoCharset(context, book.filePath)
-                            content.lines().filter { it.contains(q, ignoreCase = true) }.take(3)
+                            FileUtil.readTextAutoCharset(context, book.filePath)
+                                .lines().filter { it.contains(q, ignoreCase = true) }.take(3)
                         } catch (_: Exception) { emptyList() }
                     }
-                    if (matches.isNotEmpty()) fullTextMatches[book.id] = matches
+                    if (lines.isNotEmpty()) {
+                        matches[book.id] = lines
+                        // 渐进式更新：每扫完一本立即刷新，避免长时间等待无反馈
+                        _fullTextResults.value = matches.toMap()
+                        _results.value = txtBooks.filter { it.id in matches }
+                    }
                 }
-                _fullTextResults.value = fullTextMatches
-
-                // 3. 合并：书名匹配 + 正文匹配（去重，书名匹配优先展示）
-                val titleIds = titleMatches.map { it.id }.toSet()
-                val contentOnlyMatches = txtBooks.filter {
-                    it.id in fullTextMatches && it.id !in titleIds
-                }
-                _results.value = titleMatches + contentOnlyMatches
-            } else {
-                // 仅文件夹筛选：列出该文件夹下所有可见书
-                _results.value = bookRepository.getAllBooks().first().visible()
-                _fullTextResults.value = emptyMap()
+                _fullTextResults.value = matches
+                _results.value = txtBooks.filter { it.id in matches }
+            } finally {
+                _isSearching.value = false
             }
+        }
+    }
+
+    // 可见性过滤：密码文件夹的书不出现在搜索结果里（隐身模式下当前密码绑定的除外）
+    private fun visibleFilter(folderId: Long?): (Book) -> Boolean {
+        val pwdMap = FolderContentCache.pwdMap.value
+        val secret = session.secretPassword.value
+        val hiddenFolderIds = pwdMap
+            .filter { (_, pwd) -> pwd != FolderContentCache.UNENCRYPTED && pwd != secret }
+            .keys
+        return { b ->
+            (b.folderId == null || b.folderId !in hiddenFolderIds) &&
+                (folderId == null || b.folderId == folderId)
         }
     }
 }

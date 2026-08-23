@@ -1,8 +1,11 @@
 package com.read.app.ui.reader
 
+import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -24,12 +27,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
@@ -69,6 +76,29 @@ fun TxtReaderScreen(
     var showInsertChapterDialog by remember { mutableStateOf(false) }
     // 目录/书签面板：null=关闭，0=目录页，1=书签页
     var sheetTab by remember { mutableIntStateOf(-1) }
+    // 全屏沉浸：单击正文切换，隐藏顶栏/底栏/系统状态栏，只保留阅读界面
+    var immersive by remember { mutableStateOf(false) }
+    val view = LocalView.current
+    val activity = LocalContext.current as? Activity
+    LaunchedEffect(immersive) {
+        val window = activity?.window ?: return@LaunchedEffect
+        val controller = WindowInsetsControllerCompat(window, view)
+        if (immersive) {
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+    // 退出阅读器时确保恢复系统栏，避免污染其它页面
+    DisposableEffect(Unit) {
+        onDispose {
+            activity?.window?.let {
+                WindowInsetsControllerCompat(it, view).show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
 
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -134,6 +164,8 @@ fun TxtReaderScreen(
     Scaffold(
         containerColor = theme.bg,
         topBar = {
+            // 全屏模式下隐藏顶栏，只保留阅读界面
+            if (!immersive) {
             // 顶栏与阅读背景同色，保证沉浸感
             TopAppBar(
                 title = { Text(book?.title ?: "阅读", maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -166,6 +198,7 @@ fun TxtReaderScreen(
                     actionIconContentColor = theme.text
                 )
             )
+            }
         }
     ) { padding ->
         Box(
@@ -173,6 +206,27 @@ fun TxtReaderScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .background(theme.bg)
+                // 滚动模式：单击正文切换全屏（短按才算，长按选中文字/拖动滚动不受影响）
+                .pointerInput(readMode) {
+                    if (readMode != ReadMode.SCROLL) return@pointerInput
+                    val tapSlop = viewConfiguration.touchSlop * 2
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var distance = 0f
+                        var lastUp = down
+                        do {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { c ->
+                                distance += (c.position - c.previousPosition).getDistance()
+                                if (!c.pressed) lastUp = c
+                            }
+                        } while (event.changes.any { it.pressed })
+                        val duration = lastUp.uptimeMillis - down.uptimeMillis
+                        if (distance < tapSlop && duration < android.view.ViewConfiguration.getLongPressTimeout()) {
+                            immersive = !immersive
+                        }
+                    }
+                }
         ) {
             // 正文：LazyColumn 分段渲染，支持按段落索引精准跳转（目录/书签/位置记忆）
             LazyColumn(
@@ -211,7 +265,7 @@ fun TxtReaderScreen(
                 }
             }
 
-            // 左右翻页模式：点左半屏上一页、右半屏下一页，左右滑动也可翻页
+            // 左右翻页模式：点左三分之一上一页、右三分之一下一页，中间三分之一切换全屏，左右滑动也可翻页
             if (readMode == ReadMode.PAGE && paragraphs.size > 1) {
                 BoxWithConstraints(Modifier.fillMaxSize()) {
                     val pagePx = with(LocalDensity.current) { maxHeight.toPx() }
@@ -220,8 +274,11 @@ fun TxtReaderScreen(
                             .fillMaxSize()
                             .pointerInput(pagePx) {
                                 detectTapGestures { offset ->
-                                    scope.launch {
-                                        lazyListAnimatePage(listState, if (offset.x < size.width / 2) -pagePx else pagePx)
+                                    val w = size.width
+                                    when {
+                                        offset.x < w / 3 -> scope.launch { lazyListAnimatePage(listState, -pagePx) }
+                                        offset.x > w * 2 / 3 -> scope.launch { lazyListAnimatePage(listState, pagePx) }
+                                        else -> immersive = !immersive
                                     }
                                 }
                                 detectHorizontalDragGestures { _, dragAmount ->
@@ -232,8 +289,8 @@ fun TxtReaderScreen(
                 }
             }
 
-            // 右侧滚动条：可拖动跳转
-            if (paragraphs.size > 1) {
+            // 右侧滚动条：可拖动跳转（全屏模式下隐藏）
+            if (!immersive && paragraphs.size > 1) {
                 ReaderScrollBar(
                     ratio = progress,
                     handleColor = theme.text,
@@ -245,7 +302,8 @@ fun TxtReaderScreen(
                 )
             }
 
-            // 底部状态栏：当前章节 + 进度百分比
+            // 底部状态栏：当前章节 + 进度百分比（全屏模式下隐藏）
+            if (!immersive) {
             Surface(
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
                 color = theme.text.copy(alpha = 0.05f)
@@ -288,6 +346,7 @@ fun TxtReaderScreen(
                         )
                     }
                 }
+            }
             }
         }
     }
